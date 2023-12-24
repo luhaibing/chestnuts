@@ -32,11 +32,11 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = "17"
     }
 
     buildFeatures {
@@ -56,10 +56,13 @@ android {
 }
 
 dependencies {
+    implementation fileTree(dir: "libs", includes: ["*.jar"])
+    implementation fileTree(dir: "libs", includes: ["*.aar"])
     implementation(libs.core.ktx)
     implementation(libs.lifecycle.runtime.ktx)
     implementation(libs.activity.compose)
     implementation(platform(libs.compose.bom))
+    //noinspection DependencyNotationArgument
     implementation(libs.ui)
     implementation(libs.ui.graphics)
     implementation(libs.ui.tooling.preview)
@@ -69,6 +72,21 @@ dependencies {
     androidTestImplementation(libs.espresso.core)
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.ui.test.junit4)
+
+    //noinspection DependencyNotationArgument
     debugImplementation(libs.ui.tooling)
     debugImplementation(libs.ui.test.manifest)
+
+    /*
+    // https://mvnrepository.com/artifact/androidx.lifecycle/lifecycle-livedata-ktx
+    implementation(libs.lifecycle.livedata.ktx)
+    // https://mvnrepository.com/artifact/androidx.lifecycle/lifecycle-livedata-core-ktx
+    implementation(libs.lifecycle.livedata.core.ktx)
+    // https://mvnrepository.com/artifact/androidx.lifecycle/lifecycle-viewmodel-ktx
+    implementation(libs.lifecycle.viewmodel.ktx)
+    // https://mvnrepository.com/artifact/androidx.lifecycle/lifecycle-viewmodel-savedstate
+    implementation(libs.lifecycle.viewmodel.savedstate)
+    */
+
+
 }

@@ -1,0 +1,30 @@
+plugins {
+    id 'java-library'
+    alias(libs.plugins.org.jetbrains.kotlin.jvm)
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+dependencies {
+    implementation(project(":core"))
+    implementation(libs.com.google.devtools.ksp.symbol.processing.api)
+    //noinspection DependencyNotationArgument
+    implementation(libs.squareup.kotlinpoet)
+    implementation(libs.squareup.kotlinpoet.ksp)
+    implementation(libs.kotlinx.coroutines.core)
+    //noinspection DependencyNotationArgument
+    compileOnly(libs.retrofit)
+
+    // https://mvnrepository.com/artifact/org.jetbrains.kotlin/kotlin-reflect
+    // implementation("org.jetbrains.kotlin:kotlin-reflect:1.9.21")
+    // implementation(libs.retrofit)
+    /*
+    implementation("com.squareup.retrofit2:retrofit:retrofit:2.9.0")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:1.6.0")
+    testImplementation("com.github.tschuchortdev:kotlin-compile-testing-ksp:1.4.6")
+    testImplementation("io.realm.kotlin:library-base:0.7.0")
+    */
+}
