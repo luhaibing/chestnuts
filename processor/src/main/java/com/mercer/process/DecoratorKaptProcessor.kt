@@ -24,12 +24,12 @@ class DecoratorKaptProcessor : AbstractProcessor() {
     }
 
     override fun getSupportedSourceVersion(): SourceVersion {
-        return SourceVersion.RELEASE_17
+        return SourceVersion.latestSupported()
     }
 
     override fun process(p0: MutableSet<out TypeElement>?, p1: RoundEnvironment?): Boolean {
-        messages.printMessage(Diagnostic.Kind.ERROR,"********* ${this.javaClass.canonicalName} *********")
-        TODO("Not yet implemented")
+        messages.printMessage(Diagnostic.Kind.WARNING,"********* ${this.javaClass.canonicalName} *********")
+        return false
     }
 
 }

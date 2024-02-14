@@ -37,7 +37,7 @@ fun KSAnnotated.toSpecs(predicate: (AnnotationSpec) -> Boolean = { true }): List
 }
 
 val RETROFIT: (AnnotationSpec) -> Boolean = {
-    it.typeName.toString().startsWith("retrofit2.http")
+    it.typeName.toString().startsWith(RETROFIT2_HTTP)
 }
 
 @OptIn(KspExperimental::class)

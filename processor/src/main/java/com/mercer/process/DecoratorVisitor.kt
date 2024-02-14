@@ -11,6 +11,7 @@ import com.google.devtools.ksp.symbol.KSValueParameter
 import com.google.devtools.ksp.symbol.KSVisitorVoid
 import com.google.devtools.ksp.validate
 import com.mercer.annotate.http.Decorator
+import com.mercer.annotate.http.JsonKey
 import com.mercer.core.Argument
 import com.mercer.process.AppendDesc.Companion.toAppends
 import com.squareup.kotlinpoet.ClassName
@@ -26,6 +27,7 @@ import com.squareup.kotlinpoet.asTypeName
 import com.squareup.kotlinpoet.ksp.toClassName
 import com.squareup.kotlinpoet.ksp.toKModifier
 import com.squareup.kotlinpoet.ksp.toTypeName
+import retrofit2.http.Body
 import retrofit2.http.Headers
 
 class DecoratorVisitor(
@@ -90,8 +92,8 @@ class DecoratorVisitor(
         /*
         private val onCreator by lazy {
                 SimpleCreator()
-            }
-            */
+        }
+        */
         PropertySpec.builder("onCreator", onCreatorTypeName)
             .addModifiers(KModifier.PRIVATE)
             .delegate("lazy {%T()}", onCreatorTypeName)
@@ -149,15 +151,28 @@ class DecoratorVisitor(
         val modifiers = function.modifiers
             .mapNotNull { it.toKModifier() }
             .toMutableList()
-        val parameters = function.parameters
-            .map {
-                val pType: TypeName = it.type.toTypeName()
-                val pName = it.name?.getShortName()!!
-                ParameterSpec.builder(pName, pType)
-                    .addAnnotations(it.toSpecs(RETROFIT))
-                    .build()
+
+        val parameters = function.parameters.filter { p ->
+            p.annotations.any {
+                it.annotationType.toTypeName().toString().startsWith(RETROFIT2_HTTP)
             }
-            .toMutableList()
+        }.map {
+            val pType: TypeName = it.type.toTypeName()
+            val pName = it.name?.getShortName()!!
+            ParameterSpec.builder(pName, pType)
+                .addAnnotations(it.toSpecs(RETROFIT))
+                .build()
+        }.toMutableList()
+        val hasJsonKey: Boolean = function.parameters.map {
+            it.annotations.toList()
+        }.flatten().any {
+            it.annotationType.toTypeName().toString() == JSON_KEY
+        }
+        if (hasJsonKey) {
+            val pns = parameters.map { it.name }
+            val bn = produceName(pns)
+            parameters.add(ParameterSpec.builder(bn, MAP).addAnnotation(Body::class).build())
+        }
 
         val allParameters: MutableList<ParameterSpec> = arrayListOf()
         allParameters.addAll(parameters)
@@ -198,34 +213,60 @@ class DecoratorVisitor(
                 function.parameters.map {
                     val pType: TypeName = it.type.toTypeName()
                     val pName = it.name?.getShortName()!!
-                    ParameterSpec.builder(pName, pType)
-                        .build()
+                    ParameterSpec.builder(pName, pType).build()
                 }
             )
             .also {
 
-                val parameterNames = arrayListOf<String>()
+                val allParameterNames = arrayListOf<String>()
+                // 有效
+                val validParameterNames = arrayListOf<String>()
                 val providerNames = arrayListOf<String>()
                 val ps = function.parameters
                 for (p in ps) {
-                    parameterNames.add(p.name!!.asString())
+                    val pn = p.name!!.asString()
+                    allParameterNames.add(pn)
+                    if (p.annotations.any { a ->
+                            a.annotationType.toTypeName().toString().startsWith(RETROFIT2_HTTP)
+                        }) {
+                        validParameterNames.add(pn)
+                    }
                 }
+
+                if (hasJsonKey) {
+                    val bodyParameterName = produceName(allParameterNames)
+                    validParameterNames.add(bodyParameterName)
+                    allParameterNames.add(bodyParameterName)
+                    it.addStatement("val %N = hashMapOf<String,Any?>()", bodyParameterName)
+                    function.parameters.filter { p ->
+                        p.annotations.any { a ->
+                            a.annotationType.toTypeName().toString() == JSON_KEY
+                        }
+                    }.map { p ->
+                        val k = p.getAnnotationsByType(JsonKey::class).first().value
+                        val v = p.name!!.asString()
+                        // it.addStatement("%N.put(%S,%N)", bodyParameterName, k,v)
+                        it.addStatement("%N[%S]=%N", bodyParameterName, k, v)
+                    }
+                }
+
                 val allAppends = arrayListOf<AppendDesc>().apply {
                     addAll(appends)
                     addAll(toAppends)
                 }
+                @Suppress("KotlinConstantConditions")
                 if (allAppends.isNotEmpty()) {
                     val argNames = arrayListOf<String>()
                     for (i in ps.indices) {
                         val p = ps[i]
-                        p.addRetrofitArgument(it, parameterNames, argNames)
+                        p.addRetrofitArgument(it, allParameterNames, argNames)
                     }
                     val finds = function.getAnnotationsByType(Headers::class).toList()
                     if (finds.isNotEmpty()) {
                         val headers = finds.first()
                         val values = headers.value
                         for (value in values) {
-                            val n = produceName(parameterNames + argNames)
+                            val n = produceName(allParameterNames + argNames)
                             argNames.add(n)
                             val indexOf = value.indexOf(":")
                             val k = value.substring(0, indexOf).trim()
@@ -233,12 +274,18 @@ class DecoratorVisitor(
                             it.addStatement("val %N = %T(%S, %S)", n, Argument.Header::class, k, v)
                         }
                     }
-//                    var pNamesStr = argNames.joinToString(",")
+                    if (hasJsonKey) {
+                        val n = produceName(allParameterNames + argNames)
+                        argNames.add(n)
+                        val bn = validParameterNames.last()
+                        it.addStatement("val %N = %T(%N)", n, Argument.Body::class, bn)
+                    }
+
                     val providerArgNames = arrayListOf<String>()
                     for (index in allAppends.indices) {
-                        // it.addStatement("\r")
                         val append = allAppends[index]
-                        val excludes = parameterNames + argNames + providerNames + providerArgNames
+                        val excludes =
+                            allParameterNames + argNames + providerNames + providerArgNames
                         val n1 = produceName(excludes)
                         providerNames.add(n1)
                         it.addStatement(
@@ -250,14 +297,7 @@ class DecoratorVisitor(
                         if (index != allAppends.size - 1) {
                             val n2 = produceName(excludes + n1)
                             providerArgNames.add(n2)
-                            /*it.addStatement(
-                                "val $n2 = %T(%S, ${n1})",
-                                ClassName.bestGuess(append.type.dataTypeName),
-                                append.value,
-                            )*/
-                            it.addCode(
-                                append.statement(n2, n1)
-                            )
+                            it.addCode(append.statement(n2, n1))
                             argNames.add(n2)
                         }
                     }
@@ -265,10 +305,11 @@ class DecoratorVisitor(
 
                 val args = StringBuilder().apply {
                     var offset = 1
-                    for (n in parameterNames) {
+                    for (n in validParameterNames) {
                         append("v$offset = $n,")
                         offset += 1
                     }
+                    @Suppress("KotlinConstantConditions")
                     for (n in providerNames) {
                         append("v$offset = $n.toJson(),")
                         offset += 1

@@ -93,10 +93,10 @@ data class AppendDesc(
     }
 
     companion object {
-        val WITH_KEY_CODE_BLOCK: StatementBlock = { v1, v2, v3, v4 ->
+        private val WITH_KEY_CODE_BLOCK: StatementBlock = { v1, v2, v3, v4 ->
             CodeBlock.builder().addStatement("val %N = %T(%S, %N)", v1, v2, v3!!, v4).build()
         }
-        val WITHOUT_KEY_CODE_BLOCK: StatementBlock = { v1, v2, _, v3 ->
+        private val WITHOUT_KEY_CODE_BLOCK: StatementBlock = { v1, v2, _, v3 ->
             CodeBlock.builder().addStatement("val %N = %T(%N)", v1, v2, v3).build()
         }
 
@@ -167,10 +167,11 @@ fun appends2parameters(values: List<AppendDesc>): List<ParameterSpec> {
         val builder = ParameterSpec.builder(
             it.value ?: "xxx", String::class.asClassName().copy(nullable = true)
         )
-        val annotationSpec = AnnotationSpec.builder(
-            // ClassName.bestGuess(it.type.annotationTypeName)
-            it.annotationTypeName
-        )
+        val annotationSpec = AnnotationSpec
+            .builder(
+                // ClassName.bestGuess(it.type.annotationTypeName)
+                it.annotationTypeName
+            )
             .addMember(it.memberFormat ?: "", it.value ?: "")
             .build()
         builder.addAnnotation(annotationSpec)

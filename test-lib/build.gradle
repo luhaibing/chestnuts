@@ -2,6 +2,7 @@ plugins {
     id 'java-library'
     alias(libs.plugins.org.jetbrains.kotlin.jvm)
     alias(libs.plugins.com.google.devtools.ksp)
+    id "kotlin-kapt"
 }
 
 java {
@@ -14,4 +15,5 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(project(":core"))
     ksp(project(":processor"))
+    kapt(project(":processor"))
 }
