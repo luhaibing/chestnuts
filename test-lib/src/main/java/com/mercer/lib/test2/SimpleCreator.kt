@@ -2,8 +2,11 @@ package com.mercer.lib.test2
 
 import com.google.gson.Gson
 import com.mercer.core.Creator
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -24,6 +27,8 @@ class SimpleCreator : Creator {
             .build()
     }
 
+    private val gson by lazy { Gson() }
+
     override fun <T : Any> create(service: KClass<T>): T {
         return retrofit.create(service.java) as T
     }
@@ -34,7 +39,13 @@ class SimpleCreator : Creator {
         }
     }
 
-    private val gson by lazy { Gson() }
+    override  fun <T> suspend2deferred(block: suspend () -> T): Deferred<T> {
+        val deferred = CompletableDeferred<T>()
+        runBlocking {
+            deferred.complete(block())
+        }
+        return deferred
+    }
 
     override fun any2str(value: Any?): String? {
         return value?.let { gson.toJson(it) }

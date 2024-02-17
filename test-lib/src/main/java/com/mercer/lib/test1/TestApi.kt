@@ -1,10 +1,32 @@
 package com.mercer.lib.test1
 
-import com.mercer.test.lib.model.NetResult
-import com.mercer.test.lib.model.Person
+import com.mercer.lib.model.NetResult
+import com.mercer.lib.model.Person
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
-import retrofit2.http.*
+
+import retrofit2.http.GET
+import retrofit2.http.POST
+
+import retrofit2.http.FormUrlEncoded
+import retrofit2.http.Multipart
+
+import retrofit2.http.Query
+import retrofit2.http.QueryName
+import retrofit2.http.QueryMap
+
+import retrofit2.http.Field
+import retrofit2.http.FieldMap
+
+import retrofit2.http.Part
+import retrofit2.http.PartMap
+
+import retrofit2.http.Body
+import retrofit2.http.Url
+import retrofit2.http.Headers
+import retrofit2.http.Header
+import retrofit2.http.Tag
+
 
 interface TestApi {
 
@@ -67,6 +89,12 @@ interface TestApi {
     @Headers("X-Ping: Pong")
     suspend fun func8(
         @Header("Accept-Language") lang: String
+    ): NetResult<String>
+
+    @GET
+    suspend fun func9(
+        @Url url: String,
+        @Tag tag: String,
     ): NetResult<String>
 
 }

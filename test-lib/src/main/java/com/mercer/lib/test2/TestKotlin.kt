@@ -5,13 +5,16 @@ import com.mercer.annotate.http.Decorator
 import com.mercer.annotate.http.JsonKey
 import com.mercer.core.Entry
 import com.mercer.core.Type
-import com.mercer.test.lib.*
-import com.mercer.test.lib.model.NetResult
+import com.mercer.lib.model.NetResult
+import com.mercer.lib.model.Person
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.Deferred
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import retrofit2.http.*
 
 
-@Append(value = Type.FIELD, entry = Entry(name = "q112", value = MyStringProvider::class))
+@Append(value = Type.QUERY, entry = Entry(name = "q112", value = MyStringProvider::class))
 @Append(value = Type.QUERY, entry = Entry(name = "q111", value = MyStringProvider1::class))
 @Append(value = Type.PART, entry = Entry(name = "q113", value = MyStringProvider2::class))
 @Append(value = Type.HEADER, entry = Entry(name = "q114", value = MyStringProvider3::class))
@@ -19,12 +22,25 @@ import retrofit2.http.*
 @Decorator(SimpleCreator::class)
 interface TestKotlin {
 
-//    @Append(value = Type.QUERY, entry = Entry(name = "q117", value = MyStringProvider4::class))
-//    @GET("/test0")
-//    fun func0(
-//        @QueryName(encoded = false) v1: String,
-//        @QueryName(encoded = true) v2: String,
-//    ): Flow<NetResult<String>>
+    @Append(value = Type.QUERY, entry = Entry(name = "q112", value = MyStringProvider4::class))
+    @Append(value = Type.QUERY, entry = Entry(name = "q111", value = MyStringProvider4::class))
+    @GET("/test0")
+    fun func1(
+        @QueryName(encoded = false) v111: String,
+        @QueryName(encoded = true) v222: String,
+        @JsonKey("kkk") kkk: String,
+        @JsonKey("kkk2") kkk2: String = "3",
+    ): Deferred<NetResult<String>>
+
+    @Append(value = Type.QUERY, entry = Entry(name = "q112", value = MyStringProvider4::class))
+    @Append(value = Type.QUERY, entry = Entry(name = "q111", value = MyStringProvider4::class))
+    @GET("/test0")
+    suspend fun func2(
+        @QueryName(encoded = false) v111: String,
+        @QueryName(encoded = true) v222: String,
+        @JsonKey("kkk") kkk: String,
+        @JsonKey("kkk2") kkk2: String = "3",
+    ): NetResult<String>
 
     @GET("/test1")
     fun func1(
@@ -42,22 +58,22 @@ interface TestKotlin {
         @FieldMap v3: Map<String, String>,
     ): Flow<NetResult<String>>
 
-//    @POST("/test3")
-//    @Multipart
-//    fun func3(
-//        @Part("param1") v1: String,
-//        @Part("param2") v2: String,
-//        @Part("param3") v3: RequestBody,
-//        @Part v4: MultipartBody.Part,
-//        @Part v5: MultipartBody.Part,
-//        @PartMap v6: Map<String, String>,
-//    ): Flow<NetResult<String>>
+    @POST("/test3")
+    @Multipart
+    fun func3(
+        @Part("param1") v1: String,
+        @Part("param2") v2: String,
+        @Part("param3") v3: RequestBody,
+        @Part v4: MultipartBody.Part,
+        @Part v5: MultipartBody.Part,
+        @PartMap v6: Map<String, String>,
+    ): Flow<NetResult<String>>
 
-//    @POST("/test4")
-//    fun func4(
-//        @Body v1: Person,
-//        @Query("param2") v2: String
-//    ): Flow<NetResult<String>>
+    @POST("/test4")
+    fun func4(
+        @Body v1: Person,
+        @Query("param2") v2: String
+    ): Flow<NetResult<String>>
 
     @POST("/test5")
     @FormUrlEncoded

@@ -4,6 +4,7 @@ import com.mercer.core.Creator
 import kotlin.reflect.KClass
 
 /**
+ * 注解处理器的触发点
  */
 @Retention(AnnotationRetention.SOURCE)
 @Target(AnnotationTarget.CLASS)

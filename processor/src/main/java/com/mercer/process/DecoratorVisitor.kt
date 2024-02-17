@@ -1,19 +1,20 @@
 package com.mercer.process
 
-import com.google.devtools.ksp.KSTypeNotPresentException
 import com.google.devtools.ksp.KspExperimental
 import com.google.devtools.ksp.getAnnotationsByType
 import com.google.devtools.ksp.getDeclaredFunctions
-import com.google.devtools.ksp.processing.KSPLogger
+import com.google.devtools.ksp.processing.SymbolProcessorEnvironment
 import com.google.devtools.ksp.symbol.KSClassDeclaration
 import com.google.devtools.ksp.symbol.KSFunctionDeclaration
 import com.google.devtools.ksp.symbol.KSValueParameter
 import com.google.devtools.ksp.symbol.KSVisitorVoid
+import com.google.devtools.ksp.symbol.Modifier
 import com.google.devtools.ksp.validate
 import com.mercer.annotate.http.Decorator
 import com.mercer.annotate.http.JsonKey
-import com.mercer.core.Argument
-import com.mercer.process.AppendDesc.Companion.toAppends
+import com.mercer.process.mode.AppendRes
+import com.mercer.process.mode.Named
+import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
@@ -23,113 +24,54 @@ import com.squareup.kotlinpoet.PropertySpec
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.TypeSpec
 import com.squareup.kotlinpoet.asClassName
-import com.squareup.kotlinpoet.asTypeName
 import com.squareup.kotlinpoet.ksp.toClassName
 import com.squareup.kotlinpoet.ksp.toKModifier
 import com.squareup.kotlinpoet.ksp.toTypeName
 import retrofit2.http.Body
-import retrofit2.http.Headers
+import retrofit2.http.DELETE
+import retrofit2.http.GET
+import retrofit2.http.HEAD
+import retrofit2.http.HTTP
+import retrofit2.http.OPTIONS
+import retrofit2.http.PATCH
+import retrofit2.http.POST
+import retrofit2.http.PUT
 
+/**
+ * author:  mercer
+ * date:    2024/2/15 09:18
+ * desc:
+ *   Decorator标签解析
+ */
 class DecoratorVisitor(
-    @Suppress("unused")
-    private val logger: KSPLogger,
-    private val impl: TypeSpec.Builder,
-    private val api: TypeSpec.Builder,
-    private val appends: List<AppendDesc>,
-    private val apiClassName: ClassName,
-    private val implClassName: ClassName,
+    environment: SymbolProcessorEnvironment,
+    private val packageName: String,
+    private val apiTypeSpec: TypeSpec.Builder,
+    private val implTypeSpec: TypeSpec.Builder,
 ) : KSVisitorVoid() {
 
-    @OptIn(KspExperimental::class)
+    @Suppress("unused")
+    private val logger = environment.logger
+
+    private val apiTypeName: TypeName by lazy {
+        val name = apiTypeSpec.build().name!!
+        ClassName.bestGuess("$packageName.$name")
+    }
+
+    private val implTypeName: TypeName by lazy {
+        val name = implTypeSpec.build().name!!
+        ClassName.bestGuess("$packageName.$name")
+    }
+
+    private lateinit var topAppends: List<AppendRes>
+
     override fun visitClassDeclaration(classDeclaration: KSClassDeclaration, data: Unit) {
         super.visitClassDeclaration(classDeclaration, data)
-
-        impl.addSuperinterface(classDeclaration.toClassName())
-        impl.addFunction(
-            FunSpec.constructorBuilder().addModifiers(KModifier.PRIVATE).build()
-        )
-
-        /*
-        companion object {
-            operator fun invoke(): TestKotlin {
-                return Holder.INSTANCE
-            }
-        }
-        private object Holder {
-            val INSTANCE = TestKotlinImpl()
-        }
-        */
-        impl.addType(
-            TypeSpec.companionObjectBuilder()
-                .addFunction(
-                    FunSpec.builder("invoke")
-                        .addModifiers(KModifier.OPERATOR)
-                        .returns(classDeclaration.toClassName())
-                        .addStatement("return Holder.INSTANCE")
-                        .build()
-                )
-                .build()
-        )
-        impl.addType(
-            TypeSpec.objectBuilder("Holder")
-                .addModifiers(KModifier.PRIVATE)
-                .addProperty(
-                    PropertySpec.builder("INSTANCE", classDeclaration.toClassName())
-                        .initializer("%T()", implClassName)
-                        .build()
-                )
-                .build()
-        )
-
-        val decoratorByType = classDeclaration.getAnnotationsByType(Decorator::class)
-        val onCreatorTypeName = try {
-            decoratorByType.first().value
-            TODO()
-        } catch (e: KSTypeNotPresentException) {
-            e.ksType.toTypeName()
-        }
-
-        /*
-        private val onCreator by lazy {
-                SimpleCreator()
-        }
-        */
-        PropertySpec.builder("onCreator", onCreatorTypeName)
-            .addModifiers(KModifier.PRIVATE)
-            .delegate("lazy {%T()}", onCreatorTypeName)
-            .build()
-            .let {
-                impl.addProperty(it)
-            }
-
-        /*
-        private val api by lazy {
-            onCreator.create(TestKotlinApi::class)
-        }
-        */
-        PropertySpec.builder("api", apiClassName)
-            .addModifiers(KModifier.PRIVATE)
-            .delegate("lazy { onCreator.create(%T::class)}", apiClassName)
-            .build()
-            .let {
-                impl.addProperty(it)
-            }
-
-        /*
-        fun Any.toJson(): String? {
-            return onCreator.any2str(this)
-        }
-        */
-        FunSpec.builder("toJson")
-            .addModifiers(KModifier.PRIVATE)
-            .receiver(Any::class.asTypeName().copy(nullable = true))
-            .returns(String::class.asTypeName().copy(nullable = true))
-            .addStatement("return onCreator.any2str(this)")
-            .build()
-            .let {
-                impl.addFunction(it)
-            }
-        classDeclaration.getDeclaredFunctions()
+        topAppends = classDeclaration.toAppends()
+        generateImplSingleton(classDeclaration)
+        generateImplProperties(classDeclaration)
+        classDeclaration
+            .getDeclaredFunctions()
             .filter {
                 it.isAbstract
             }
@@ -141,55 +83,188 @@ class DecoratorVisitor(
             }
     }
 
-    @OptIn(KspExperimental::class)
     override fun visitFunctionDeclaration(function: KSFunctionDeclaration, data: Unit) {
         super.visitFunctionDeclaration(function, data)
-        val name = function.simpleName.getShortName()
+
+        val appends = arrayListOf<AppendRes>()
+        appends.addAll(function.toAppends())
+        val includes = appends.map { it.toName() }
+        appends.addAll(topAppends.filter { it.toName() !in includes })
+
         val returnType = function.returnType?.toTypeName() ?: Unit::class.asClassName()
-        val isCoroutines = returnType is ParameterizedTypeName && returnType.rawType in COROUTINES
 
-        val modifiers = function.modifiers
-            .mapNotNull { it.toKModifier() }
-            .toMutableList()
+        val modifiers = function.modifiers.filter {
+            it != Modifier.ABSTRACT
+        }.mapNotNull {
+            it.toKModifier()
+        }
 
-        val parameters = function.parameters.filter { p ->
-            p.annotations.any {
-                it.annotationType.toTypeName().toString().startsWith(RETROFIT2_HTTP)
+        val parameters = function.parameters
+
+        val funcName = function.simpleName.getShortName()
+        val name = generateApiFunction(
+            parameters, appends, funcName, function, modifiers, returnType,
+        )
+
+        val path = function.toPath()
+        generateImplFunction(
+            path, parameters, funcName, modifiers, returnType, appends, name
+        )
+
+    }
+
+    /**
+     * 生成静态代理类的单例模式
+     */
+    private fun generateImplSingleton(classDeclaration: KSClassDeclaration) {
+        // 定义超类,实现接口
+        implTypeSpec.addSuperinterface(classDeclaration.toClassName())
+        // 构造函数私有化
+        implTypeSpec.addFunction(
+            FunSpec.constructorBuilder().addModifiers(KModifier.PRIVATE).build()
+        )
+        /*
+        companion object {
+            operator fun invoke(): TestKotlin {
+                return Holder.INSTANCE
             }
-        }.map {
-            val pType: TypeName = it.type.toTypeName()
-            val pName = it.name?.getShortName()!!
+        }
+        private object Holder {
+            val INSTANCE = TestKotlinImpl()
+        }
+        */
+        implTypeSpec.addType(
+            TypeSpec.companionObjectBuilder()
+                .addFunction(
+                    FunSpec
+                        .builder("invoke")
+                        .addModifiers(KModifier.OPERATOR)
+                        .returns(classDeclaration.toClassName())
+                        .addStatement("return Holder.INSTANCE")
+                        .build()
+                ).build()
+        )
+        implTypeSpec.addType(
+            TypeSpec.objectBuilder("Holder")
+                .addModifiers(KModifier.PRIVATE)
+                .addProperty(
+                    PropertySpec
+                        .builder("INSTANCE", classDeclaration.toClassName())
+                        .initializer("%T()", implTypeName)
+                        .build()
+                )
+                .build()
+        )
+    }
+
+    /**
+     * 生成静态代理类的成员变量
+     */
+    @OptIn(KspExperimental::class)
+    private fun generateImplProperties(classDeclaration: KSClassDeclaration) {
+        val typeName = parseToTypeName {
+            classDeclaration.getAnnotationsByType(Decorator::class).first().value
+        }
+        /*
+        private val onCreator by lazy {
+            SimpleCreator()
+        }
+         */
+        PropertySpec.builder("onCreator", CREATOR_CLASS_NAME)
+            .addModifiers(KModifier.PRIVATE)
+            .delegate("lazy {%T()}", typeName)
+            .build()
+            .let {
+                implTypeSpec.addProperty(it)
+            }
+
+        /*
+        private val api by lazy {
+            onCreator.create(TestKotlinApi::class)
+        }
+         */
+        val apiClassName = apiTypeName
+        PropertySpec.builder("api", apiClassName)
+            .addModifiers(KModifier.PRIVATE)
+            .delegate("lazy { onCreator.create(%T::class)}", apiClassName)
+            .build()
+            .let {
+                implTypeSpec.addProperty(it)
+            }
+
+        /*
+        private fun any2str(any: Any?): String? {
+            return onCreator.any2str(any)
+        }
+         */
+        FunSpec.builder("any2str")
+            .addModifiers(KModifier.PRIVATE)
+            .addParameter("any", ANY_NULLABLE)
+            .returns(STRING_NULLABLE)
+            .addStatement("return onCreator.any2str(any)")
+            .build()
+            .let {
+                implTypeSpec.addFunction(it)
+            }
+    }
+
+    /**
+     * 生成 Retrofit 所需要的动态代理的接口类的接口方法
+     */
+    private fun generateApiFunction(
+        parameters: List<KSValueParameter>,
+        appends: ArrayList<AppendRes>,
+        name: String,
+        function: KSFunctionDeclaration,
+        modifiers: List<KModifier>,
+        returnType: TypeName,
+    ): String {
+        val parameterSpecs = parameters.filter(HAS_RETROFIT).mapIndexed { i, p ->
+            val pType: TypeName = p.type.toTypeName()
+            val pName = "v${i + 1}"
             ParameterSpec.builder(pName, pType)
-                .addAnnotations(it.toSpecs(RETROFIT))
+                .addAnnotations(p.toAnnotationSpecs(RETROFIT))
                 .build()
         }.toMutableList()
-        val hasJsonKey: Boolean = function.parameters.map {
-            it.annotations.toList()
-        }.flatten().any {
-            it.annotationType.toTypeName().toString() == JSON_KEY
-        }
+        val names = arrayListOf<Named>()
+        names.addAll(parameterSpecs.map { Named(value = it.name, flag = Named.PARAMETER) })
+        val hasJsonKey = parameters.any(HAS_JSON_KEY)
         if (hasJsonKey) {
-            val pns = parameters.map { it.name }
-            val bn = produceName(pns)
-            parameters.add(ParameterSpec.builder(bn, MAP).addAnnotation(Body::class).build())
+            val produce = Named.produce(names)
+            names.add(Named(produce, Named.VARIABLE))
+            parameterSpecs.add(
+                ParameterSpec.builder(produce, MAP).addAnnotation(Body::class).build()
+            )
         }
-
-        val allParameters: MutableList<ParameterSpec> = arrayListOf()
-        allParameters.addAll(parameters)
-
-        allParameters.addAll(appends2parameters(appends))
-        val toAppends = function.toAppends()
-        allParameters.addAll(appends2parameters(toAppends))
-
-        val parameterSpecs = allParameters.mapIndexed { index, spec ->
-            spec.toBuilder("v${index + 1}").build()
+        parameterSpecs.addAll(
+            appends.mapIndexed { i, e ->
+                val (value, annotation, memberFormat) = e
+                val pName = "v${i + names.size + 1}"
+                ParameterSpec
+                    .builder(pName, STRING_NULLABLE)
+                    .addAnnotation(
+                        AnnotationSpec.builder(annotation)
+                            .addMember(memberFormat ?: "", value ?: "").build()
+                    )
+                    .build()
+            }
+        )
+        val unique = StringBuilder().apply {
+            for (spec in parameterSpecs) {
+                append(spec.type)
+                append(",")
+            }
+        }.toString().md5().let {
+            "${name}_$it"
         }
-        FunSpec.builder(name)
-            .addAnnotations(function.toSpecs(RETROFIT))
+        val funSpec = FunSpec.builder(unique)
+            .addAnnotations(function.toAnnotationSpecs(RETROFIT))
             .addModifiers(modifiers)
             .addModifiers(KModifier.ABSTRACT)
             .addParameters(parameterSpecs)
             .apply {
+                val isCoroutines =
+                    returnType is ParameterizedTypeName && returnType.rawType in COROUTINES
                 if (isCoroutines) {
                     addModifiers(KModifier.SUSPEND)
                     returns((returnType as ParameterizedTypeName).typeArguments.first())
@@ -197,209 +272,114 @@ class DecoratorVisitor(
                     returns(returnType)
                 }
             }
-            .let {
-                api.addFunction(it.build())
-            }
+            .build()
+        apiTypeSpec.addFunction(funSpec)
+        return funSpec.name
+    }
 
-        ///////////////////////////////////////////
+    /**
+     * 生成 静态代理类的 方法
+     */
+    @OptIn(KspExperimental::class)
+    private fun generateImplFunction(
+        path: String?,
+        parameters: List<KSValueParameter>,
+        funcName: String,
+        modifiers: List<KModifier>,
+        returnType: TypeName,
+        appends: ArrayList<AppendRes>,
+        name: String
+    ) {
+        val names = arrayListOf<Named>()
+        names.addAll(parameters.map {
+            val flag = if (it.any(JSON_KEY)) Named.TEMPORARY else Named.PARAMETER
+            Named(value = it.name!!.getShortName(), flag = flag)
+        })
+        val jsonKeys = parameters.filter(HAS_JSON_KEY)
 
-        FunSpec.builder(name)
-            .addModifiers(modifiers.toMutableList().apply {
-                remove(KModifier.ABSTRACT)
-                add(KModifier.OVERRIDE)
-            })
+        val funSpecBuilder = FunSpec.builder(funcName)
+            .addModifiers(modifiers)
+            .addModifiers(KModifier.OVERRIDE)
             .returns(returnType)
             .addParameters(
-                function.parameters.map {
+                parameters.map {
                     val pType: TypeName = it.type.toTypeName()
                     val pName = it.name?.getShortName()!!
                     ParameterSpec.builder(pName, pType).build()
                 }
             )
-            .also {
 
-                val allParameterNames = arrayListOf<String>()
-                // 有效
-                val validParameterNames = arrayListOf<String>()
-                val providerNames = arrayListOf<String>()
-                val ps = function.parameters
-                for (p in ps) {
-                    val pn = p.name!!.asString()
-                    allParameterNames.add(pn)
-                    if (p.annotations.any { a ->
-                            a.annotationType.toTypeName().toString().startsWith(RETROFIT2_HTTP)
-                        }) {
-                        validParameterNames.add(pn)
-                    }
-                }
-
-                if (hasJsonKey) {
-                    val bodyParameterName = produceName(allParameterNames)
-                    validParameterNames.add(bodyParameterName)
-                    allParameterNames.add(bodyParameterName)
-                    it.addStatement("val %N = hashMapOf<String,Any?>()", bodyParameterName)
-                    function.parameters.filter { p ->
-                        p.annotations.any { a ->
-                            a.annotationType.toTypeName().toString() == JSON_KEY
-                        }
-                    }.map { p ->
-                        val k = p.getAnnotationsByType(JsonKey::class).first().value
-                        val v = p.name!!.asString()
-                        // it.addStatement("%N.put(%S,%N)", bodyParameterName, k,v)
-                        it.addStatement("%N[%S]=%N", bodyParameterName, k, v)
-                    }
-                }
-
-                val allAppends = arrayListOf<AppendDesc>().apply {
-                    addAll(appends)
-                    addAll(toAppends)
-                }
-                @Suppress("KotlinConstantConditions")
-                if (allAppends.isNotEmpty()) {
-                    val argNames = arrayListOf<String>()
-                    for (i in ps.indices) {
-                        val p = ps[i]
-                        p.addRetrofitArgument(it, allParameterNames, argNames)
-                    }
-                    val finds = function.getAnnotationsByType(Headers::class).toList()
-                    if (finds.isNotEmpty()) {
-                        val headers = finds.first()
-                        val values = headers.value
-                        for (value in values) {
-                            val n = produceName(allParameterNames + argNames)
-                            argNames.add(n)
-                            val indexOf = value.indexOf(":")
-                            val k = value.substring(0, indexOf).trim()
-                            val v = value.substring(indexOf + 1).trim()
-                            it.addStatement("val %N = %T(%S, %S)", n, Argument.Header::class, k, v)
-                        }
-                    }
-                    if (hasJsonKey) {
-                        val n = produceName(allParameterNames + argNames)
-                        argNames.add(n)
-                        val bn = validParameterNames.last()
-                        it.addStatement("val %N = %T(%N)", n, Argument.Body::class, bn)
-                    }
-
-                    val providerArgNames = arrayListOf<String>()
-                    for (index in allAppends.indices) {
-                        val append = allAppends[index]
-                        val excludes =
-                            allParameterNames + argNames + providerNames + providerArgNames
-                        val n1 = produceName(excludes)
-                        providerNames.add(n1)
-                        it.addStatement(
-                            "val %N = %T().provide(%L)",
-                            n1,
-                            append.providerTypeName,
-                            argNames.joinToString(",")
-                        )
-                        if (index != allAppends.size - 1) {
-                            val n2 = produceName(excludes + n1)
-                            providerArgNames.add(n2)
-                            it.addCode(append.statement(n2, n1))
-                            argNames.add(n2)
-                        }
-                    }
-                }
-
-                val args = StringBuilder().apply {
-                    var offset = 1
-                    for (n in validParameterNames) {
-                        append("v$offset = $n,")
-                        offset += 1
-                    }
-                    @Suppress("KotlinConstantConditions")
-                    for (n in providerNames) {
-                        append("v$offset = $n.toJson(),")
-                        offset += 1
-                    }
-                }.toString()
-                if (isCoroutines) {
-                    it.addStatement("return onCreator.suspend2flow {\r api.%N(%L)}", name, args)
-                } else {
-                    it.addStatement("return api.%N(%L)", name, args)
-                }
-
+        if (jsonKeys.isNotEmpty()) {
+            val named = Named(value = Named.produce(names), flag = Named.VARIABLE)
+            names.add(named)
+            funSpecBuilder.addStatement("val %N = hashMapOf<String,Any?>()", named.value)
+            for (jsonKey in jsonKeys) {
+                val k = jsonKey.getAnnotationsByType(JsonKey::class).first().value
+                val v = jsonKey.name!!.asString()
+                // funSpecBuilder.addStatement("%N.put(%S,%N)", named.value, k, v)
+                funSpecBuilder.addStatement("%N[%S]=%N", named.value, k, v)
             }
-            .let {
-                impl.addFunction(it.build())
-            }
-    }
-
-}
-
-fun produceName(excludes: List<String>): String {
-    var position = 1
-    while (true) {
-        val name = "v$position"
-        position += 1
-        if (name in excludes) {
-            continue
         }
-        return name
-    }
-}
+        /*
+         val v1 = MyStringProvider4().provide("kkk")
+         */
+        for (res in appends) {
+            val named = Named(
+                value = Named.produce(names),
+                flag = Named.VARIABLE + Named.TEMPORARY + Named.TO_JSON
+            )
+            names.add(named)
+            funSpecBuilder.addStatement(
+                "val %N = %T().provide(%S,%S)",
+                named.value,
+                res.provider,
+                path ?: "null",
+                res.name ?: ""
+            )
+        }
+        val returnRawType = if (returnType is ParameterizedTypeName) {
+            returnType.rawType
+        } else {
+            returnType
+        }
 
-@OptIn(KspExperimental::class)
-private fun KSValueParameter.addRetrofitArgument(
-    builder: FunSpec.Builder,
-    names: MutableList<String>,
-    pNames: MutableList<String>
-) {
+        val args = buildString {
+            val values = names.filter {
+                it.flag and Named.PARAMETER == Named.PARAMETER
+                        || it.flag and Named.VARIABLE == Named.VARIABLE
+            }
+            for (index in values.indices) {
+                val named = values[index]
+                if (named.flag and Named.TO_JSON == Named.TO_JSON) {
+                    append("v${index + 1} = any2str(${named.value}), ")
+                } else {
+                    append("v${index + 1} = ${named.value}, ")
+                }
+                if (index < values.size - 1) {
+                    append(WRAP)
+                }
+            }
+        }
+        when (returnRawType) {
+            FLOW_CLASS_NAME -> {
+                funSpecBuilder.addStatement(
+                    "return onCreator.suspend2flow{\rapi.%N(%L)\r}",
+                    name, args
+                )
+            }
 
-    fun addArgumentWithKeyStatement(typeName: TypeName, key: String) {
-        val n = produceName(names + pNames)
-        pNames.add(n)
-        val varName = name!!.asString()
-        builder.addStatement("val %N = %T(%S, %N)", n, typeName, key, varName)
+            DEFERRED_CLASS_NAME -> {
+                funSpecBuilder.addStatement(
+                    "return onCreator.suspend2deferred{\rapi.%N(%L)\n}",
+                    name, args
+                )
+            }
+
+            else -> {
+                funSpecBuilder.addStatement("return api.%N(%L)", name, args)
+            }
+        }
+        implTypeSpec.addFunction(funSpecBuilder.build())
     }
 
-    fun addArgumentStatement(typeName: TypeName) {
-        val n = produceName(names + pNames)
-        pNames.add(n)
-        val varName = name!!.asString()
-        builder.addStatement("val %N = %T(%N)", n, typeName, varName)
-    }
-
-    val queries = getAnnotationsByType(retrofit2.http.Query::class).toList()
-    if (queries.isNotEmpty()) {
-        val value = queries.first()
-        addArgumentWithKeyStatement(Argument.Query::class.asClassName(), value.value)
-    }
-    val queryMaps = getAnnotationsByType(retrofit2.http.QueryMap::class).toList()
-    if (queryMaps.isNotEmpty()) {
-        addArgumentStatement(Argument.QueryMap::class.asClassName())
-    }
-    val fields = getAnnotationsByType(retrofit2.http.Field::class).toList()
-    if (fields.isNotEmpty()) {
-        val value = fields.first()
-        addArgumentWithKeyStatement(Argument.Field::class.asClassName(), value.value)
-    }
-    val fieldMaps = getAnnotationsByType(retrofit2.http.FieldMap::class).toList()
-    if (fieldMaps.isNotEmpty()) {
-        addArgumentStatement(Argument.FieldMap::class.asClassName())
-    }
-    val parts = getAnnotationsByType(retrofit2.http.Part::class).toList()
-    if (parts.isNotEmpty()) {
-        val value = parts.first()
-        addArgumentWithKeyStatement(Argument.Part::class.asClassName(), value.value)
-    }
-    val partMaps = getAnnotationsByType(retrofit2.http.PartMap::class).toList()
-    if (partMaps.isNotEmpty()) {
-        addArgumentStatement(Argument.PartMap::class.asClassName())
-    }
-    val headers = getAnnotationsByType(retrofit2.http.Header::class).toList()
-    if (headers.isNotEmpty()) {
-        val value = headers.first()
-        addArgumentWithKeyStatement(Argument.Header::class.asClassName(), value.value)
-    }
-    val headerMaps = getAnnotationsByType(retrofit2.http.HeaderMap::class).toList()
-    if (headerMaps.isNotEmpty()) {
-        addArgumentStatement(Argument.HeaderMap::class.asClassName())
-    }
-    val bodies = getAnnotationsByType(retrofit2.http.Body::class).toList()
-    if (bodies.isNotEmpty()) {
-        addArgumentStatement(Argument.Body::class.asClassName())
-    }
 }
