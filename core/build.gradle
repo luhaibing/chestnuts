@@ -1,6 +1,7 @@
 plugins {
     id 'java-library'
     alias(libs.plugins.org.jetbrains.kotlin.jvm)
+    id 'maven-publish'
 }
 
 java {
@@ -30,4 +31,14 @@ dependencies {
     implementation(libs.bundles.retrofit)
     implementation(libs.kotlinx.coroutines.core)
     // implementation("androidx.annotation:annotation:1.6.0")
+}
+
+afterEvaluate {
+    publishing {
+        publications {
+            release(MavenPublication) {
+                from components.java
+            }
+        }
+    }
 }
