@@ -21,6 +21,7 @@ import com.squareup.kotlinpoet.KModifier
 import com.squareup.kotlinpoet.ParameterSpec
 import com.squareup.kotlinpoet.ParameterizedTypeName
 import com.squareup.kotlinpoet.PropertySpec
+import com.squareup.kotlinpoet.STRING
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.TypeSpec
 import com.squareup.kotlinpoet.asClassName
@@ -28,14 +29,6 @@ import com.squareup.kotlinpoet.ksp.toClassName
 import com.squareup.kotlinpoet.ksp.toKModifier
 import com.squareup.kotlinpoet.ksp.toTypeName
 import retrofit2.http.Body
-import retrofit2.http.DELETE
-import retrofit2.http.GET
-import retrofit2.http.HEAD
-import retrofit2.http.HTTP
-import retrofit2.http.OPTIONS
-import retrofit2.http.PATCH
-import retrofit2.http.POST
-import retrofit2.http.PUT
 
 /**
  * author:  mercer
@@ -312,12 +305,16 @@ class DecoratorVisitor(
         if (jsonKeys.isNotEmpty()) {
             val named = Named(value = Named.produce(names), flag = Named.VARIABLE)
             names.add(named)
-            funSpecBuilder.addStatement("val %N = hashMapOf<String,Any?>()", named.value)
+            funSpecBuilder.addStatement("val %N = hashMapOf<String,String?>()", named.value)
             for (jsonKey in jsonKeys) {
                 val k = jsonKey.getAnnotationsByType(JsonKey::class).first().value
                 val v = jsonKey.name!!.asString()
                 // funSpecBuilder.addStatement("%N.put(%S,%N)", named.value, k, v)
-                funSpecBuilder.addStatement("%N[%S]=%N", named.value, k, v)
+                if (jsonKey.type.toTypeName() in arrayOf(STRING, STRING_NULLABLE)) {
+                    funSpecBuilder.addStatement("%N[%S]=%N", named.value, k, v)
+                }else{
+                    funSpecBuilder.addStatement("%N[%S]=any2str(%N)", named.value, k, v)
+                }
             }
         }
         /*
