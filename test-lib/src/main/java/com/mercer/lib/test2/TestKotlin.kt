@@ -18,7 +18,7 @@ import retrofit2.http.*
 @Append(value = Type.QUERY, entry = Entry(name = "q111", value = MyStringProvider1::class))
 @Append(value = Type.PART, entry = Entry(name = "q113", value = MyStringProvider2::class))
 @Append(value = Type.HEADER, entry = Entry(name = "q114", value = MyStringProvider3::class))
-@Append(value = Type.BODY, entry = Entry(name = "", value = MyIntProvider::class))
+//@Append(value = Type.BODY, entry = Entry(name = "", value = MyIntProvider::class))
 @Decorator(SimpleCreator::class)
 interface TestKotlin {
 

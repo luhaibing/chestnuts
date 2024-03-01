@@ -29,7 +29,7 @@ class DecoratorSymbolProcessor(
             .filter { it.validate() }
         finds.map {
             val packageName = it.packageName.asString()
-            val apiName = it.simpleName.asString() + "Api"
+            val apiName = it.simpleName.asString() + "Service"
             val implName = it.simpleName.asString() + "Impl"
             val apiTypeSpec = TypeSpec.interfaceBuilder(apiName)
             val implTypSpec = TypeSpec.classBuilder(implName)

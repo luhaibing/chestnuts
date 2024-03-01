@@ -41,8 +41,4 @@ class SimpleCreator : Creator {
 
     private val gson by lazy { Gson() }
 
-    override fun any2str(value: Any?): String? {
-        return value?.let { gson.toJson(it) }
-    }
-
 }

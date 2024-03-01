@@ -8,7 +8,7 @@ enum class Type {
     // TODO:  不常用
     FIELD,
     PART,
-    BODY;
+    // BODY;
 }
 
 /*

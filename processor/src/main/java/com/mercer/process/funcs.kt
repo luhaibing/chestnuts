@@ -128,15 +128,6 @@ fun KSAnnotated.toAppends(): List<AppendRes> {
                     provider = provider,
                 )
             }
-
-            Type.BODY -> {
-                AppendRes(
-                    name = name,
-                    annotation = retrofit2.http.Body::class.asTypeName(),
-                    memberFormat = null,
-                    provider = provider,
-                )
-            }
         }
     }.toList()
 }

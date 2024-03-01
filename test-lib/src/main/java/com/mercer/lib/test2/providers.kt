@@ -6,7 +6,7 @@ import com.mercer.core.Provider
 abstract class Mock
 
 class MyStringProvider : Mock(), Provider {
-    override fun provide(path: String, key: String): Any {
+    override fun provide(path: String, key: String): Any? {
         TODO("Not yet implemented")
     }
 }

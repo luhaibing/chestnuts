@@ -39,16 +39,12 @@ class SimpleCreator : Creator {
         }
     }
 
-    override  fun <T> suspend2deferred(block: suspend () -> T): Deferred<T> {
+    override fun <T> suspend2deferred(block: suspend () -> T): Deferred<T> {
         val deferred = CompletableDeferred<T>()
         runBlocking {
             deferred.complete(block())
         }
         return deferred
-    }
-
-    override fun any2str(value: Any?): String? {
-        return value?.let { gson.toJson(it) }
     }
 
 }

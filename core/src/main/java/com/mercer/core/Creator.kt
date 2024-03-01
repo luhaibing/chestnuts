@@ -12,6 +12,6 @@ interface Creator {
 
     fun <T> suspend2deferred(block: suspend () -> T): Deferred<T>
 
-    fun any2str(value: Any?): String?
+    // fun any2str(value: Any?): String?
 
 }

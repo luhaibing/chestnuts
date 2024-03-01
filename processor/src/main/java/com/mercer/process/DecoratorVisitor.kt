@@ -14,6 +14,7 @@ import com.mercer.annotate.http.Decorator
 import com.mercer.annotate.http.JsonKey
 import com.mercer.process.mode.AppendRes
 import com.mercer.process.mode.Named
+import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.FunSpec
@@ -185,20 +186,6 @@ class DecoratorVisitor(
                 implTypeSpec.addProperty(it)
             }
 
-        /*
-        private fun any2str(any: Any?): String? {
-            return onCreator.any2str(any)
-        }
-         */
-        FunSpec.builder("any2str")
-            .addModifiers(KModifier.PRIVATE)
-            .addParameter("any", ANY_NULLABLE)
-            .returns(STRING_NULLABLE)
-            .addStatement("return onCreator.any2str(any)")
-            .build()
-            .let {
-                implTypeSpec.addFunction(it)
-            }
     }
 
     /**
@@ -226,7 +213,7 @@ class DecoratorVisitor(
             val produce = Named.produce(names)
             names.add(Named(produce, Named.VARIABLE))
             parameterSpecs.add(
-                ParameterSpec.builder(produce, MAP).addAnnotation(Body::class).build()
+                ParameterSpec.builder(produce, ANY).addAnnotation(Body::class).build()
             )
         }
         parameterSpecs.addAll(
@@ -234,7 +221,7 @@ class DecoratorVisitor(
                 val (value, annotation, memberFormat) = e
                 val pName = "v${i + names.size + 1}"
                 ParameterSpec
-                    .builder(pName, STRING_NULLABLE)
+                    .builder(pName, ANY_NULLABLE)
                     .addAnnotation(
                         AnnotationSpec.builder(annotation)
                             .addMember(memberFormat ?: "", value ?: "").build()
@@ -243,7 +230,7 @@ class DecoratorVisitor(
             }
         )
         val unique = StringBuilder().apply {
-            for (spec in parameterSpecs) {
+            for (spec in parameters) {
                 append(spec.type)
                 append(",")
             }
@@ -305,15 +292,15 @@ class DecoratorVisitor(
         if (jsonKeys.isNotEmpty()) {
             val named = Named(value = Named.produce(names), flag = Named.VARIABLE)
             names.add(named)
-            funSpecBuilder.addStatement("val %N = hashMapOf<String,String?>()", named.value)
+            funSpecBuilder.addStatement("val %N = hashMapOf<String, Any?>()", named.value)
             for (jsonKey in jsonKeys) {
                 val k = jsonKey.getAnnotationsByType(JsonKey::class).first().value
                 val v = jsonKey.name!!.asString()
                 // funSpecBuilder.addStatement("%N.put(%S,%N)", named.value, k, v)
                 if (jsonKey.type.toTypeName() in arrayOf(STRING, STRING_NULLABLE)) {
                     funSpecBuilder.addStatement("%N[%S]=%N", named.value, k, v)
-                }else{
-                    funSpecBuilder.addStatement("%N[%S]=any2str(%N)", named.value, k, v)
+                } else {
+                    funSpecBuilder.addStatement("%N[%S]=%N", named.value, k, v)
                 }
             }
         }
@@ -348,7 +335,7 @@ class DecoratorVisitor(
             for (index in values.indices) {
                 val named = values[index]
                 if (named.flag and Named.TO_JSON == Named.TO_JSON) {
-                    append("v${index + 1} = any2str(${named.value}), ")
+                    append("v${index + 1} = ${named.value}, ")
                 } else {
                     append("v${index + 1} = ${named.value}, ")
                 }
