@@ -7,8 +7,10 @@ import com.google.devtools.ksp.symbol.KSAnnotated
 import com.google.devtools.ksp.symbol.KSFunctionDeclaration
 import com.mercer.annotate.http.Append
 import com.mercer.annotate.http.JsonKey
+import com.mercer.core.Path
 import com.mercer.core.Type
 import com.mercer.process.mode.AppendRes
+import com.mercer.process.mode.PathRes
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.TypeName
@@ -169,4 +171,34 @@ fun KSFunctionDeclaration.toPath(): String? {
     http != null && return http.path
 
     return null
+}
+
+@OptIn(KspExperimental::class)
+fun KSFunctionDeclaration.toPathRes(): PathRes? {
+    val put = getAnnotationsByType(PUT::class).firstOrNull()
+    put != null && return PathRes(Path.PUT::class, put.value)
+
+    val delete = getAnnotationsByType(DELETE::class).firstOrNull()
+    delete != null && return PathRes(Path.DELETE::class, delete.value)
+
+    val post = getAnnotationsByType(POST::class).firstOrNull()
+    post != null && return PathRes(Path.POST::class, post.value)
+
+    val get = getAnnotationsByType(GET::class).firstOrNull()
+    get != null && return PathRes(Path.GET::class, get.value)
+
+    val head = getAnnotationsByType(HEAD::class).firstOrNull()
+    head != null && return PathRes(Path.HEAD::class, head.value)
+
+    val patch = getAnnotationsByType(PATCH::class).firstOrNull()
+    patch != null && return PathRes(Path.PATCH::class, patch.value)
+
+    val options = getAnnotationsByType(OPTIONS::class).firstOrNull()
+    options != null && return PathRes(Path.OPTIONS::class, options.value)
+
+    val http = getAnnotationsByType(HTTP::class).firstOrNull()
+    http != null && return PathRes(Path.HTTP::class, http.path)
+
+    return null
+
 }

@@ -2,8 +2,10 @@ package com.mercer.process
 
 import com.mercer.annotate.http.Decorator
 import com.mercer.core.Creator
+import com.mercer.core.Key
 import com.squareup.kotlinpoet.STRING
 import com.squareup.kotlinpoet.asClassName
+import com.squareup.kotlinpoet.asTypeName
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.flow.Flow
 
@@ -19,3 +21,5 @@ val STRING_NULLABLE = STRING.copy(nullable = true)
 val ANY_NULLABLE = Any::class.asClassName().copy(nullable = true)
 
 const val WRAP = "\r\n"
+
+val KEY_CLASS_NAME = Key::class.java.asTypeName()
