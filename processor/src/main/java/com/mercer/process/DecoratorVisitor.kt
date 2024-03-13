@@ -14,6 +14,7 @@ import com.mercer.annotate.http.Decorator
 import com.mercer.annotate.http.JsonKey
 import com.mercer.process.mode.AppendRes
 import com.mercer.process.mode.Named
+import com.mercer.process.mode.PathRes
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ClassName
@@ -100,9 +101,9 @@ class DecoratorVisitor(
             parameters, appends, funcName, function, modifiers, returnType,
         )
 
-        val path = function.toPath()
+        val pathRes = function.toPathRes() ?: throw RuntimeException("pathRes is null")
         generateImplFunction(
-            path, parameters, funcName, modifiers, returnType, appends, name
+            pathRes, parameters, funcName, modifiers, returnType, appends, name
         )
 
     }
@@ -262,7 +263,7 @@ class DecoratorVisitor(
      */
     @OptIn(KspExperimental::class)
     private fun generateImplFunction(
-        path: String?,
+        pathRes: PathRes,
         parameters: List<KSValueParameter>,
         funcName: String,
         modifiers: List<KModifier>,
@@ -307,18 +308,17 @@ class DecoratorVisitor(
         /*
          val v1 = MyStringProvider4().provide("kkk")
          */
+        val (pathTypeName, path) = pathRes
         for (res in appends) {
             val named = Named(
                 value = Named.produce(names),
                 flag = Named.VARIABLE + Named.TEMPORARY + Named.TO_JSON
             )
             names.add(named)
+
             funSpecBuilder.addStatement(
-                "val %N = %T().provide(%S,%S)",
-                named.value,
-                res.provider,
-                path ?: "null",
-                res.name ?: ""
+                "val %N = %T().provide(%T(%S),%S)",
+                named.value, res.provider, pathTypeName, path, res.name ?: ""
             )
         }
         val returnRawType = if (returnType is ParameterizedTypeName) {

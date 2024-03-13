@@ -19,3 +19,4 @@ val STRING_NULLABLE = STRING.copy(nullable = true)
 val ANY_NULLABLE = Any::class.asClassName().copy(nullable = true)
 
 const val WRAP = "\r\n"
+
