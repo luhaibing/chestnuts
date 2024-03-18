@@ -13,6 +13,4 @@ interface OnCoroutineScopeUnify {
 
     fun requireCoroutineScope(): CoroutineScope
 
-    //
-
 }

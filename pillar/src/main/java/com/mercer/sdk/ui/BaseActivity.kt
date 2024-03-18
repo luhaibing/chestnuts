@@ -5,10 +5,13 @@ import android.content.Context
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.mercer.sdk.ui.unify.OnContextUnify
 import com.mercer.sdk.ui.unify.OnCoroutineScopeUnify
 import com.mercer.sdk.ui.unify.OnExtensionUnify
 import com.mercer.sdk.ui.unify.OnLifecycleUnify
+import com.mercer.sdk.ui.unify.OnRequireActivityUnify
+import com.mercer.sdk.ui.unify.OnRequireContextUnify
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 
 /**
@@ -18,7 +21,8 @@ import kotlinx.coroutines.CoroutineScope
  *   基础 activity
  */
 abstract class BaseActivity : AppCompatActivity(),
-    OnContextUnify,
+    OnRequireContextUnify,
+    OnRequireActivityUnify,
     OnLifecycleUnify,
     OnCoroutineScopeUnify,
     OnExtensionUnify {
@@ -37,11 +41,23 @@ abstract class BaseActivity : AppCompatActivity(),
         return requireActivity()
     }
 
+    private val handler = CoroutineExceptionHandler { _, throwable ->
+        handleException(throwable)
+    }
+
+    private val scope: CoroutineScope by lazy {
+        val name = CoroutineName("${javaClass.simpleName}-CoroutineScope")
+        CoroutineScope(lifecycleScope.coroutineContext + handler + name)
+    }
+
     override fun requireCoroutineScope(): CoroutineScope {
-        return lifecycleScope
+        return scope
     }
 
     ///////////////////////////////////////////// Unify /////////////////////////////////////////////
 
+    protected fun handleException(value: Throwable) {
+        //
+    }
 
 }
