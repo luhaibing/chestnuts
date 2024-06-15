@@ -1,5 +1,6 @@
 [versions]
-agp = "8.1.4"
+#agp = "8.1.4"
+agp = "7.4.2"
 core-ktx = "1.12.0"
 junit = "4.13.2"
 androidx-test-ext-junit = "1.1.5"
@@ -9,16 +10,19 @@ activity-compose = "1.8.2"
 compose-bom = "2023.10.01"
 appcompat = "1.6.1"
 material = "1.11.0"
-org-jetbrains-kotlin-jvm = "1.8.10"
-org-jetbrains-kotlin-android = "1.8.10"
+navigation = "2.7.7"
+# org-jetbrains-kotlin-jvm = "1.8.10"
+# org-jetbrains-kotlin-android = "1.8.10"
+org-jetbrains-kotlin = "1.9.0"
 kotlinx-coroutines-android = "1.7.3"
 retrofit = "2.9.0"
 okhttp = "4.12.0"
 # noinspection GradleDependency
-com-google-devtools-ksp = "1.8.10-1.0.9"
+# com-google-devtools-ksp = "1.8.10-1.0.9"
+com-google-devtools-ksp = "1.9.0-1.0.13"
 squareup-kotlinpoet = "1.15.3"
 gson = "2.10.1"
-activity = "1.9.0"
+activity = "1.8.0"
 constraintlayout = "2.1.4"
 
 # min = "24"
@@ -26,6 +30,10 @@ constraintlayout = "2.1.4"
 [libraries]
 android = { module = "com.google.android:android", version = "4.1.1.4" }
 androidx-annotation = { module = "androidx.annotation:annotation", version = "1.7.1" }
+navigation-fragment-ktx = { module = "androidx.navigation:navigation-fragment-ktx", version.ref = "navigation" }
+navigation-common-ktx = { module = "androidx.navigation:navigation-common-ktx", version.ref = "navigation" }
+navigation-runtime-ktx = { module = "androidx.navigation:navigation-runtime-ktx", version.ref = "navigation" }
+
 core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "core-ktx" }
 appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
@@ -83,9 +91,9 @@ androidx-constraintlayout = { group = "androidx.constraintlayout", name = "const
 
 [plugins]
 com-android-application = { id = "com.android.application", version.ref = "agp" }
-org-jetbrains-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "org-jetbrains-kotlin-android" }
+org-jetbrains-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "org-jetbrains-kotlin" }
 com-android-library = { id = "com.android.library", version.ref = "agp" }
-org-jetbrains-kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "org-jetbrains-kotlin-jvm" }
+org-jetbrains-kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "org-jetbrains-kotlin" }
 com-google-devtools-ksp = { id = "com.google.devtools.ksp", version.ref = "com-google-devtools-ksp" }
 
 [bundles]
@@ -93,10 +101,10 @@ retrofit = [
     "retrofit",
     "okhttp",
     "retrofit-converter-gson",
-    "retrofit-converter-moshi",
-    "retrofit-converter-protobuf",
-    "retrofit-converter-jackson",
-    "retrofit-converter-scalars",
+    # "retrofit-converter-moshi",
+    # "retrofit-converter-protobuf",
+    # "retrofit-converter-jackson",
+    # "retrofit-converter-scalars",
 ]
 kotlinx-coroutines = [
     "kotlinx-coroutines-core",

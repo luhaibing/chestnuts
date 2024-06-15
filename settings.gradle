@@ -21,3 +21,4 @@ include(":papers")
 include ":test-lib"
 include ':test-library'
 include ':sample'
+include ':kernel'
