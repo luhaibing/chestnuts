@@ -54,13 +54,19 @@ interface HandledThrowable : OnRequireCoroutineScope {
 
 interface HandledThrowable {
 
-    // 第一个消费者
+    /**
+     * 第一个消费者
+     */
     val firstConsumer: ThrowableInterceptor
 
-    // 拦截节点
+    /**
+     * 中间消费者
+     */
     val throwableInterceptors: List<ThrowableInterceptor>
 
-    // 最后的消费者
+    /**
+     * 最后的消费者
+     */
     val lastConsumer: ThrowableInterceptor
 
     suspend fun handle(value: Throwable): Throwable? {
