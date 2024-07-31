@@ -16,6 +16,7 @@ dependencies {
     implementation(libs.squareup.kotlinpoet)
     implementation(libs.squareup.kotlinpoet.ksp)
     implementation(libs.kotlinx.coroutines.core)
+    implementation libs.firebase.crashlytics.buildtools
     //noinspection DependencyNotationArgument
     compileOnly(libs.retrofit)
 }

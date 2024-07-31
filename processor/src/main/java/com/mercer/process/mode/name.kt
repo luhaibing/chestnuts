@@ -6,7 +6,7 @@ package com.mercer.process.mode
  * desc:
  *   函数内部的变量命名
  */
-data class Named(
+internal data class Named(
     val value: String,
     val flag: Int
 ) {

@@ -1,6 +1,7 @@
 package com.mercer.annotate.http
 
 import com.mercer.core.Creator
+import com.mercer.core.Converter
 import kotlin.reflect.KClass
 
 /**
@@ -10,4 +11,5 @@ import kotlin.reflect.KClass
 @Target(AnnotationTarget.CLASS)
 annotation class Decorator(
     val value: KClass<out Creator>,
+    val converter: KClass<out Converter>
 )

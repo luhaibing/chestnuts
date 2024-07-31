@@ -2,7 +2,9 @@ package com.mercer.process
 
 import com.google.devtools.ksp.KspExperimental
 import com.google.devtools.ksp.getAnnotationsByType
+import com.google.devtools.ksp.getClassDeclarationByName
 import com.google.devtools.ksp.getDeclaredFunctions
+import com.google.devtools.ksp.processing.Resolver
 import com.google.devtools.ksp.processing.SymbolProcessorEnvironment
 import com.google.devtools.ksp.symbol.KSClassDeclaration
 import com.google.devtools.ksp.symbol.KSFunctionDeclaration
@@ -10,14 +12,20 @@ import com.google.devtools.ksp.symbol.KSValueParameter
 import com.google.devtools.ksp.symbol.KSVisitorVoid
 import com.google.devtools.ksp.symbol.Modifier
 import com.google.devtools.ksp.validate
+import com.mercer.annotate.http.Cache
 import com.mercer.annotate.http.Decorator
 import com.mercer.annotate.http.JsonKey
+import com.mercer.core.CachePipeline
+import com.mercer.core.DefaultCacheStrategy
+import com.mercer.core.Mode
+import com.mercer.core.SelectedCacheStrategy
 import com.mercer.process.mode.AppendRes
 import com.mercer.process.mode.Named
 import com.mercer.process.mode.PathRes
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ClassName
+import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
 import com.squareup.kotlinpoet.ParameterSpec
@@ -40,6 +48,7 @@ import retrofit2.http.Body
  */
 class DecoratorVisitor(
     environment: SymbolProcessorEnvironment,
+    val resolver: Resolver,
     private val packageName: String,
     private val apiTypeSpec: TypeSpec.Builder,
     private val implTypeSpec: TypeSpec.Builder,
@@ -59,12 +68,67 @@ class DecoratorVisitor(
     }
 
     private lateinit var topAppends: List<AppendRes>
+    private val pipelines by lazy { hashSetOf<Pair<TypeName, TypeName>>() }
 
+    @KspExperimental
     override fun visitClassDeclaration(classDeclaration: KSClassDeclaration, data: Unit) {
         super.visitClassDeclaration(classDeclaration, data)
         topAppends = classDeclaration.toAppends()
         generateImplSingleton(classDeclaration)
         generateImplProperties(classDeclaration)
+
+
+        /*
+        classDeclaration
+            .getDeclaredFunctions()
+            .filter {
+                it.isAbstract
+            }
+            .filter {
+                it.validate()
+            }
+            .filter {
+                it.getAnnotationsByType(Cache::class).toList().isNotEmpty()
+            }.onEach {
+                val cache = it.getAnnotationsByType(Cache::class).first()
+                val typeName = parseToTypeName {
+                    cache.value
+                }
+                val ksClassDeclaration = resolver.getClassDeclarationByName(typeName.toString())!!
+                val resultTypeName = resolver.parse(ksClassDeclaration)
+                logger.warn("ksClassDeclaration >>> $ksClassDeclaration")
+                val mode = cache.mode
+                logger.warn("function           >>> $it")
+                logger.warn("typeName           >>> $typeName")
+                logger.warn("mode               >>> $mode")
+                logger.warn("resultTypeName     >>> $resultTypeName")
+                logger.warn(" ")
+            }.toList()
+            */
+
+        val functions = classDeclaration.getDeclaredFunctions()
+        for (function in functions) {
+            if (!function.isAbstract) {
+                continue
+            }
+            if (!function.validate()) {
+                continue
+            }/*
+            val caches = function.getAnnotationsByType(Cache::class).toList()
+            if (caches.isNotEmpty()) {
+                val cache = caches.first()
+                val typeName = parseToTypeName {
+                    cache.value
+                }
+                val ksClassDeclaration = resolver.getClassDeclarationByName(typeName.toString()) ?: continue
+                val parameterTypeName = resolver.parse(ksClassDeclaration) ?: continue
+                pipelines.add(typeName to parameterTypeName)
+            }
+            */
+            visitFunctionDeclaration(function, Unit)
+        }
+
+        /*
         classDeclaration
             .getDeclaredFunctions()
             .filter {
@@ -76,8 +140,11 @@ class DecoratorVisitor(
             .forEach {
                 visitFunctionDeclaration(it, Unit)
             }
+            */
+        logger.warn("pipelines >>> $pipelines")
     }
 
+    @OptIn(KspExperimental::class)
     override fun visitFunctionDeclaration(function: KSFunctionDeclaration, data: Unit) {
         super.visitFunctionDeclaration(function, data)
 
@@ -94,6 +161,26 @@ class DecoratorVisitor(
             it.toKModifier()
         }
 
+        val caches = function.getAnnotationsByType(Cache::class).toList()
+        var cachePipelineTypeName: TypeName? = null
+        var pipelineParameterTypeName: TypeName? = null
+        var mode: Mode? = null
+        if (caches.isNotEmpty()) {
+            val cache = caches.first()
+            val typeName = parseToTypeName {
+                cache.value
+            }
+            resolver.getClassDeclarationByName(typeName.toString())?.let {
+                resolver.parse(it)
+            }?.let {
+                pipelines.add(typeName to it)
+            }
+            val declaration = resolver.getClassDeclarationByName(typeName.toString())!!
+            pipelineParameterTypeName = resolver.parse(declaration)
+            cachePipelineTypeName = typeName
+            mode = cache.mode
+        }
+
         val parameters = function.parameters
 
         val funcName = function.simpleName.getShortName()
@@ -103,9 +190,33 @@ class DecoratorVisitor(
 
         val pathRes = function.toPathRes() ?: throw RuntimeException("pathRes is null")
         generateImplFunction(
-            pathRes, parameters, funcName, modifiers, returnType, appends, name
+            pathRes,
+            parameters,
+            funcName,
+            modifiers,
+            returnType,
+            appends,
+            name,
+            cachePipelineTypeName,
+            pipelineParameterTypeName,
+            mode
         )
 
+//        runCatching {
+//            val parseToTypeName = parseToTypeName {
+//                // TODO:
+//                function.getAnnotationsByType(Cache::class).first().value
+//            }
+//            println("1.parseToTypeName >>> $parseToTypeName")
+//            logger.logging("2.parseToTypeName >>> $parseToTypeName")
+//            logger.info("3.parseToTypeName >>> $parseToTypeName")
+//            logger.warn("4.parseToTypeName >>> $parseToTypeName")
+//            // parseToTypeName.superclass
+//            logger.warn("4.parseToTypeName >>> $parseToTypeName")
+////            logger.error("parseToTypeName >>> $parseToTypeName")
+//        }
+
+        // com.squareup.kotlinpoet
     }
 
     /**
@@ -129,26 +240,17 @@ class DecoratorVisitor(
         }
         */
         implTypeSpec.addType(
-            TypeSpec.companionObjectBuilder()
-                .addFunction(
-                    FunSpec
-                        .builder("invoke")
-                        .addModifiers(KModifier.OPERATOR)
-                        .returns(classDeclaration.toClassName())
-                        .addStatement("return Holder.INSTANCE")
-                        .build()
-                ).build()
+            TypeSpec.companionObjectBuilder().addFunction(
+                FunSpec.builder("invoke").addModifiers(KModifier.OPERATOR)
+                    .returns(classDeclaration.toClassName()).addStatement("return Holder.INSTANCE")
+                    .build()
+            ).build()
         )
         implTypeSpec.addType(
-            TypeSpec.objectBuilder("Holder")
-                .addModifiers(KModifier.PRIVATE)
-                .addProperty(
-                    PropertySpec
-                        .builder("INSTANCE", classDeclaration.toClassName())
-                        .initializer("%T()", implTypeName)
-                        .build()
-                )
-                .build()
+            TypeSpec.objectBuilder("Holder").addModifiers(KModifier.PRIVATE).addProperty(
+                PropertySpec.builder("INSTANCE", classDeclaration.toClassName())
+                    .initializer("%T()", implTypeName).build()
+            ).build()
         )
     }
 
@@ -159,17 +261,13 @@ class DecoratorVisitor(
     private fun generateImplProperties(classDeclaration: KSClassDeclaration) {
         val typeName = parseToTypeName {
             classDeclaration.getAnnotationsByType(Decorator::class).first().value
-        }
-        /*
+        }/*
         private val onCreator by lazy {
             SimpleCreator()
         }
          */
-        PropertySpec.builder("onCreator", CREATOR_CLASS_NAME)
-            .addModifiers(KModifier.PRIVATE)
-            .delegate("lazy {%T()}", typeName)
-            .build()
-            .let {
+        PropertySpec.builder("onCreator", CREATOR_CLASS_NAME).addModifiers(KModifier.PRIVATE)
+            .delegate("lazy {%T()}", typeName).build().let {
                 implTypeSpec.addProperty(it)
             }
 
@@ -179,11 +277,8 @@ class DecoratorVisitor(
         }
          */
         val apiClassName = apiTypeName
-        PropertySpec.builder("api", apiClassName)
-            .addModifiers(KModifier.PRIVATE)
-            .delegate("lazy { onCreator.create(%T::class)}", apiClassName)
-            .build()
-            .let {
+        PropertySpec.builder("api", apiClassName).addModifiers(KModifier.PRIVATE)
+            .delegate("lazy { onCreator.create(%T::class)}", apiClassName).build().let {
                 implTypeSpec.addProperty(it)
             }
 
@@ -203,9 +298,7 @@ class DecoratorVisitor(
         val parameterSpecs = parameters.filter(HAS_RETROFIT).mapIndexed { i, p ->
             val pType: TypeName = p.type.toTypeName()
             val pName = "v${i + 1}"
-            ParameterSpec.builder(pName, pType)
-                .addAnnotations(p.toAnnotationSpecs(RETROFIT))
-                .build()
+            ParameterSpec.builder(pName, pType).addAnnotations(p.toAnnotationSpecs(RETROFIT)).build()
         }.toMutableList()
         val names = arrayListOf<Named>()
         names.addAll(parameterSpecs.map { Named(value = it.name, flag = Named.PARAMETER) })
@@ -217,19 +310,13 @@ class DecoratorVisitor(
                 ParameterSpec.builder(produce, ANY).addAnnotation(Body::class).build()
             )
         }
-        parameterSpecs.addAll(
-            appends.mapIndexed { i, e ->
-                val (value, annotation, memberFormat) = e
-                val pName = "v${i + names.size + 1}"
-                ParameterSpec
-                    .builder(pName, ANY_NULLABLE)
-                    .addAnnotation(
-                        AnnotationSpec.builder(annotation)
-                            .addMember(memberFormat ?: "", value ?: "").build()
-                    )
-                    .build()
-            }
-        )
+        parameterSpecs.addAll(appends.mapIndexed { i, e ->
+            val (value, annotation, memberFormat) = e
+            val pName = "v${i + names.size + 1}"
+            ParameterSpec.builder(pName, ANY_NULLABLE).addAnnotation(
+                AnnotationSpec.builder(annotation).addMember(memberFormat ?: "", value ?: "").build()
+            ).build()
+        })
         val unique = StringBuilder().apply {
             for (spec in parameters) {
                 append(spec.type)
@@ -238,22 +325,16 @@ class DecoratorVisitor(
         }.toString().md5().let {
             "${name}_$it"
         }
-        val funSpec = FunSpec.builder(unique)
-            .addAnnotations(function.toAnnotationSpecs(RETROFIT))
-            .addModifiers(modifiers)
-            .addModifiers(KModifier.ABSTRACT)
-            .addParameters(parameterSpecs)
-            .apply {
-                val isCoroutines =
-                    returnType is ParameterizedTypeName && returnType.rawType in COROUTINES
+        val funSpec = FunSpec.builder(unique).addAnnotations(function.toAnnotationSpecs(RETROFIT))
+            .addModifiers(modifiers).addModifiers(KModifier.ABSTRACT).addParameters(parameterSpecs).apply {
+                val isCoroutines = returnType is ParameterizedTypeName && returnType.rawType in COROUTINES
                 if (isCoroutines) {
                     addModifiers(KModifier.SUSPEND)
                     returns((returnType as ParameterizedTypeName).typeArguments.first())
                 } else {
                     returns(returnType)
                 }
-            }
-            .build()
+            }.build()
         apiTypeSpec.addFunction(funSpec)
         return funSpec.name
     }
@@ -269,7 +350,10 @@ class DecoratorVisitor(
         modifiers: List<KModifier>,
         returnType: TypeName,
         appends: ArrayList<AppendRes>,
-        name: String
+        name: String,
+        pipelineTypeName: TypeName?,
+        pipelineParameterTypeName: TypeName?,
+        mode: Mode?
     ) {
         val names = arrayListOf<Named>()
         names.addAll(parameters.map {
@@ -278,17 +362,13 @@ class DecoratorVisitor(
         })
         val jsonKeys = parameters.filter(HAS_JSON_KEY)
 
-        val funSpecBuilder = FunSpec.builder(funcName)
-            .addModifiers(modifiers)
-            .addModifiers(KModifier.OVERRIDE)
-            .returns(returnType)
-            .addParameters(
-                parameters.map {
+        val funSpecBuilder =
+            FunSpec.builder(funcName).addModifiers(modifiers).addModifiers(KModifier.OVERRIDE)
+                .returns(returnType).addParameters(parameters.map {
                     val pType: TypeName = it.type.toTypeName()
                     val pName = it.name?.getShortName()!!
                     ParameterSpec.builder(pName, pType).build()
-                }
-            )
+                })
 
         if (jsonKeys.isNotEmpty()) {
             val named = Named(value = Named.produce(names), flag = Named.VARIABLE)
@@ -304,21 +384,23 @@ class DecoratorVisitor(
                     funSpecBuilder.addStatement("%N[%S]=%N", named.value, k, v)
                 }
             }
-        }
-        /*
+        }/*
          val v1 = MyStringProvider4().provide("kkk")
          */
         val (pathTypeName, path) = pathRes
         for (res in appends) {
             val named = Named(
-                value = Named.produce(names),
-                flag = Named.VARIABLE + Named.TEMPORARY + Named.TO_JSON
+                value = Named.produce(names), flag = Named.VARIABLE + Named.TEMPORARY + Named.TO_JSON
             )
             names.add(named)
 
             funSpecBuilder.addStatement(
                 "val %N = %T().provide(%T(%S),%S)",
-                named.value, res.provider, pathTypeName, path, res.name ?: ""
+                named.value,
+                res.provider,
+                pathTypeName,
+                path,
+                res.name ?: ""
             )
         }
         val returnRawType = if (returnType is ParameterizedTypeName) {
@@ -329,8 +411,7 @@ class DecoratorVisitor(
 
         val args = buildString {
             val values = names.filter {
-                it.flag and Named.PARAMETER == Named.PARAMETER
-                        || it.flag and Named.VARIABLE == Named.VARIABLE
+                it.flag and Named.PARAMETER == Named.PARAMETER || it.flag and Named.VARIABLE == Named.VARIABLE
             }
             for (index in values.indices) {
                 val named = values[index]
@@ -344,18 +425,72 @@ class DecoratorVisitor(
                 }
             }
         }
-        when (returnRawType) {
-            FLOW_CLASS_NAME -> {
+        // TODO:
+        //  val pipeline = SimpleCachePipeline()
+        if (pipelineTypeName != null) {
+            funSpecBuilder.addStatement("val pipeline = %T()", pipelineTypeName)
+            funSpecBuilder.addStatement(
+                "val type = object : %T<%T>() {}.type", TYPE_TOKEN_CLASS_NAME,
+                (returnType as ParameterizedTypeName).typeArguments.first()
+            )
+        }
+
+        when {
+            returnRawType == FLOW_CLASS_NAME && pipelineTypeName != null && mode != null -> {
+                val codeBuilder = CodeBlock.builder()
+                codeBuilder.add("return flow {\n")
+                val strategyTypeName = if (mode == Mode.DEFAULT) {
+                    DefaultCacheStrategy::class.asClassName()
+                } else {
+                    SelectedCacheStrategy::class.asClassName()
+                }
+                val typeName = (returnType as ParameterizedTypeName).typeArguments.first()
+                if (typeName == pipelineParameterTypeName) {
+                    /*
+                    codeBuilder.add(
+                        "%T.process(collector = this, path = %T(%S), onCache = { pipeline.read( %T(%S), type) }, onNetwork = { api.%N(%L) })",
+                        strategyTypeName,
+                        pathTypeName, path,
+                        pathTypeName, path,
+                        name,
+                        args
+                    )
+                    */
+                    codeBuilder.add(
+                        "%T.process(collector = this, path = %N, onCache = { pipeline.read( %N, type) }, onNetwork = { api.%N(%L) })",
+                        strategyTypeName,
+                       // pathTypeName, path,
+                       // pathTypeName, path,
+                        name,
+                        args
+                    )
+                } else {
+                    codeBuilder.add(
+                        "%T.process(collector = this, path = %T(%S), onCache = { pipeline.read( %T(%S), type) as? %T }, onNetwork = { api.%N(%L) })",
+                        strategyTypeName,
+                        pathTypeName, path,
+                        pathTypeName, path,
+                        typeName,
+                        name,
+                        args
+                    )
+                }
+
+                codeBuilder.add("}\n")
+                // TODO:
+                codeBuilder.add(".map{\nit.value\n}")
+                funSpecBuilder.addCode(codeBuilder.build())
+            }
+
+            returnRawType == FLOW_CLASS_NAME -> {
                 funSpecBuilder.addStatement(
-                    "return onCreator.suspend2flow{\rapi.%N(%L)\r}",
-                    name, args
+                    "return onCreator.suspend2flow{\rapi.%N(%L)\r}", name, args
                 )
             }
 
-            DEFERRED_CLASS_NAME -> {
+            returnRawType == DEFERRED_CLASS_NAME -> {
                 funSpecBuilder.addStatement(
-                    "return onCreator.suspend2deferred{\rapi.%N(%L)\n}",
-                    name, args
+                    "return onCreator.suspend2deferred{\rapi.%N(%L)\n}", name, args
                 )
             }
 
@@ -363,7 +498,31 @@ class DecoratorVisitor(
                 funSpecBuilder.addStatement("return api.%N(%L)", name, args)
             }
         }
+
+
         implTypeSpec.addFunction(funSpecBuilder.build())
     }
 
+}
+
+val CACHE_PIPELINE_CLASS_NAME = CachePipeline::class.asClassName()
+private fun Resolver.parse(value: KSClassDeclaration): TypeName? {
+    for (superType in value.superTypes) {
+        val ksType = superType.resolve()
+        val toClassName = ksType.toClassName()
+        return when (toClassName) {
+            CACHE_PIPELINE_CLASS_NAME -> {
+                ksType.arguments.first().type!!.resolve().toTypeName()
+            }
+
+            ANY -> {
+                throw IllegalArgumentException()
+            }
+
+            else -> {
+                parse(ksType.declaration as KSClassDeclaration)
+            }
+        }
+    }
+    return null
 }

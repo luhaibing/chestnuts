@@ -2,6 +2,7 @@ package com.mercer.process
 
 import com.mercer.annotate.http.Decorator
 import com.mercer.core.Creator
+import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.STRING
 import com.squareup.kotlinpoet.asClassName
 import kotlinx.coroutines.Deferred
@@ -19,4 +20,4 @@ val STRING_NULLABLE = STRING.copy(nullable = true)
 val ANY_NULLABLE = Any::class.asClassName().copy(nullable = true)
 
 const val WRAP = "\r\n"
-
+val TYPE_TOKEN_CLASS_NAME =   ClassName("com.google.gson.reflect","TypeToken")

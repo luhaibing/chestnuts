@@ -10,6 +10,14 @@ java {
     targetCompatibility = JavaVersion.VERSION_17
 }
 
+/*
+sourceSets {
+    main {
+        java.srcDirs += ["/build/generated/ksp/main/kotlin"]
+    }
+}
+*/
+
 dependencies {
     implementation(libs.bundles.retrofit)
     implementation(libs.kotlinx.coroutines.core)

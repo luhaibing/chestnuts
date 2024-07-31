@@ -145,35 +145,6 @@ fun parseToTypeName(block: () -> Any): ClassName {
 }
 
 @OptIn(KspExperimental::class)
-fun KSFunctionDeclaration.toPath(): String? {
-    val put = getAnnotationsByType(PUT::class).firstOrNull()
-    put != null && return put.value
-
-    val delete = getAnnotationsByType(DELETE::class).firstOrNull()
-    delete != null && return delete.value
-
-    val post = getAnnotationsByType(POST::class).firstOrNull()
-    post != null && return post.value
-
-    val get = getAnnotationsByType(GET::class).firstOrNull()
-    get != null && return get.value
-
-    val head = getAnnotationsByType(HEAD::class).firstOrNull()
-    head != null && return head.value
-
-    val patch = getAnnotationsByType(PATCH::class).firstOrNull()
-    patch != null && return patch.value
-
-    val options = getAnnotationsByType(OPTIONS::class).firstOrNull()
-    options != null && return options.value
-
-    val http = getAnnotationsByType(HTTP::class).firstOrNull()
-    http != null && return http.path
-
-    return null
-}
-
-@OptIn(KspExperimental::class)
 fun KSFunctionDeclaration.toPathRes(): PathRes? {
     val put = getAnnotationsByType(PUT::class).firstOrNull()
     put != null && return PathRes(Path.PUT::class, put.value)
