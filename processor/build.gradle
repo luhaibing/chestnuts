@@ -1,6 +1,6 @@
 plugins {
     id 'java-library'
-    alias(libs.plugins.org.jetbrains.kotlin.jvm)
+    alias(libs.plugins.kotlin.jvm)
     id 'maven-publish'
 }
 
@@ -11,13 +11,13 @@ java {
 
 dependencies {
     implementation(project(":core"))
-    implementation(libs.com.google.devtools.ksp.symbol.processing.api)
+    implementation(libs.devtools.ksp.symbol.processing.api)
     //noinspection DependencyNotationArgument
     implementation(libs.squareup.kotlinpoet)
     implementation(libs.squareup.kotlinpoet.ksp)
     implementation(libs.kotlinx.coroutines.core)
     //noinspection DependencyNotationArgument
-    compileOnly(libs.retrofit)
+    implementation(libs.retrofit)
 }
 
 afterEvaluate {

@@ -17,5 +17,5 @@ rootProject.name = "chestnuts"
 include(":app")
 include(":core")
 include(":processor")
-include ":test-lib"
-include ':test-library'
+include(":test-lib")
+include(":test-library")

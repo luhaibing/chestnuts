@@ -1,6 +1,6 @@
 plugins {
     id 'java-library'
-    alias(libs.plugins.org.jetbrains.kotlin.jvm)
+    alias(libs.plugins.kotlin.jvm)
     id 'maven-publish'
 }
 
@@ -12,25 +12,8 @@ java {
 dependencies {
     implementation(fileTree(dir: "libs", includes: ["*.jar"]))
     compileOnly(libs.android)
-    /*
-    // https://mvnrepository.com/artifact/com.squareup.retrofit2/retrofit
-    implementation(libs.retrofit)
-    // https://mvnrepository.com/artifact/com.squareup.retrofit2/converter-gson
-    implementation(libs.converter.gson)
-    // https://mvnrepository.com/artifact/com.squareup.retrofit2/converter-jackson
-    implementation(libs.converter.jackson)
-    // https://mvnrepository.com/artifact/com.squareup.retrofit2/converter-scalars
-    implementation(libs.converter.scalars)
-    // https://mvnrepository.com/artifact/com.squareup.retrofit2/converter-moshi
-    implementation(libs.converter.moshi)
-    // https://mvnrepository.com/artifact/com.squareup.retrofit2/converter-protobuf
-    implementation(libs.converter.protobuf)
-    // https://mvnrepository.com/artifact/com.squareup.okhttp3/okhttp
-    implementation(libs.okhttp)
-    */
-    implementation(libs.bundles.retrofit)
-    implementation(libs.kotlinx.coroutines.core)
-    // implementation("androidx.annotation:annotation:1.6.0")
+    compileOnly(libs.retrofit)
+    compileOnly(libs.kotlinx.coroutines.core)
 }
 
 afterEvaluate {
