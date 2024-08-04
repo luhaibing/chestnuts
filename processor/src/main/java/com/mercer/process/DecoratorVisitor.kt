@@ -2,17 +2,23 @@ package com.mercer.process
 
 import com.google.devtools.ksp.KspExperimental
 import com.google.devtools.ksp.getAnnotationsByType
+import com.google.devtools.ksp.getClassDeclarationByName
 import com.google.devtools.ksp.getDeclaredFunctions
+import com.google.devtools.ksp.processing.Resolver
 import com.google.devtools.ksp.processing.SymbolProcessorEnvironment
+import com.google.devtools.ksp.symbol.ClassKind
 import com.google.devtools.ksp.symbol.KSClassDeclaration
 import com.google.devtools.ksp.symbol.KSFunctionDeclaration
 import com.google.devtools.ksp.symbol.KSValueParameter
 import com.google.devtools.ksp.symbol.KSVisitorVoid
 import com.google.devtools.ksp.symbol.Modifier
 import com.google.devtools.ksp.validate
+import com.mercer.annotate.http.Cache
 import com.mercer.annotate.http.Decorator
 import com.mercer.annotate.http.JsonKey
+import com.mercer.core.Mode
 import com.mercer.process.mode.AppendRes
+import com.mercer.process.mode.CacheBean
 import com.mercer.process.mode.Named
 import com.mercer.process.mode.PathRes
 import com.squareup.kotlinpoet.ANY
@@ -27,6 +33,7 @@ import com.squareup.kotlinpoet.STRING
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.TypeSpec
 import com.squareup.kotlinpoet.asClassName
+import com.squareup.kotlinpoet.buildCodeBlock
 import com.squareup.kotlinpoet.ksp.toClassName
 import com.squareup.kotlinpoet.ksp.toKModifier
 import com.squareup.kotlinpoet.ksp.toTypeName
@@ -40,6 +47,7 @@ import retrofit2.http.Body
  */
 class DecoratorVisitor(
     environment: SymbolProcessorEnvironment,
+    private val resolver: Resolver,
     private val packageName: String,
     private val apiTypeSpec: TypeSpec.Builder,
     private val implTypeSpec: TypeSpec.Builder,
@@ -59,12 +67,16 @@ class DecoratorVisitor(
     }
 
     private lateinit var topAppends: List<AppendRes>
+    private val pipelines by lazy { hashSetOf<Pair<TypeName, TypeName>>() }
+    private val allNames = arrayListOf<Named>()
 
     override fun visitClassDeclaration(classDeclaration: KSClassDeclaration, data: Unit) {
         super.visitClassDeclaration(classDeclaration, data)
         topAppends = classDeclaration.toAppends()
         generateImplSingleton(classDeclaration)
         generateImplProperties(classDeclaration)
+        allNames.add(Named(value = "onCreator", flag = Named.GLOBAL_VARIABLE))
+        allNames.add(Named(value = "api", flag = Named.GLOBAL_VARIABLE))
         classDeclaration
             .getDeclaredFunctions()
             .filter {
@@ -78,6 +90,7 @@ class DecoratorVisitor(
             }
     }
 
+    @OptIn(KspExperimental::class)
     override fun visitFunctionDeclaration(function: KSFunctionDeclaration, data: Unit) {
         super.visitFunctionDeclaration(function, data)
 
@@ -94,6 +107,26 @@ class DecoratorVisitor(
             it.toKModifier()
         }
 
+        val caches = function.getAnnotationsByType(Cache::class).toList()
+        /*
+        var cachePipelineTypeName: TypeName? = null
+        var pipelineParameterTypeName: TypeName? = null
+        var mode: Mode? = null
+        */
+        val cacheBean = if (caches.isNotEmpty()) {
+            val cache = caches.first()
+            val pipeline = parseToTypeName { cache.value }
+            val declaration = resolver.getClassDeclarationByName(pipeline.toString())!!
+            val pipelineFunctionReturn = resolver.parse(declaration)
+            pipelines.add(pipeline to pipelineFunctionReturn)
+            val name = Named.produce(allNames, "pipeline")
+            val named = Named(name, Named.GLOBAL_VARIABLE or Named.PIPELINE_NAME)
+            allNames.add(named)
+            CacheBean(cache.mode, pipeline, pipelineFunctionReturn, declaration.classKind, named)
+        } else {
+            null
+        }
+
         val parameters = function.parameters
 
         val funcName = function.simpleName.getShortName()
@@ -101,9 +134,38 @@ class DecoratorVisitor(
             parameters, appends, funcName, function, modifiers, returnType,
         )
 
+        /*
+        private val api by lazy {
+            onCreator.create(TestKotlinApi::class)
+        }
+         */
+        val apiClassName = apiTypeName
+        PropertySpec.builder("api", apiClassName)
+            .addModifiers(KModifier.PRIVATE)
+            .delegate("lazy { onCreator.create(%T::class)}", apiClassName)
+            .build()
+
+        if (cacheBean != null) {
+            // logger.warn("cacheBean >>> $cacheBean")
+            PropertySpec.builder(cacheBean.named.value, cacheBean.pipeline)
+            implTypeSpec.addProperty(
+                PropertySpec.builder(cacheBean.named.value, cacheBean.pipeline)
+                    .addModifiers(KModifier.PRIVATE)
+                    .apply {
+                        if (cacheBean.classKind == ClassKind.OBJECT) {
+                            initializer("%T", cacheBean.pipeline)
+                        } else {
+                            delegate("lazy { %T() }", cacheBean.pipeline)
+                        }
+                    }
+                    .build()
+            )
+        }
+
+
         val pathRes = function.toPathRes() ?: throw RuntimeException("pathRes is null")
         generateImplFunction(
-            pathRes, parameters, funcName, modifiers, returnType, appends, name
+            pathRes, parameters, funcName, modifiers, returnType, appends, name, cacheBean
         )
 
     }
@@ -123,22 +185,78 @@ class DecoratorVisitor(
             operator fun invoke(): TestKotlin {
                 return Holder.INSTANCE
             }
+            internal inline fun <reified T> suspend2deferred(crossinline block: suspend () -> T): Deferred<T> {
+                val deferred = CompletableDeferred<T>()
+                runBlocking {
+                    deferred.complete(block())
+                }
+                return deferred
+            }
         }
         private object Holder {
             val INSTANCE = TestKotlinImpl()
         }
         */
-        implTypeSpec.addType(
-            TypeSpec.companionObjectBuilder()
-                .addFunction(
-                    FunSpec
-                        .builder("invoke")
-                        .addModifiers(KModifier.OPERATOR)
-                        .returns(classDeclaration.toClassName())
-                        .addStatement("return Holder.INSTANCE")
-                        .build()
-                ).build()
+
+        /*
+        val suspend2DeferredFun = FunSpec.builder("suspend2deferred")
+            .addModifiers(KModifier.INTERNAL, KModifier.INLINE)
+            .receiver(TypeName.ANY)
+            .addTypeVariable(TypeVariableName("T"))
+            .addParameter(
+                ParameterSpec.builder("block", suspend() -> T::class)
+                .addModifiers(KModifier.CROSSINLINE).build()
+            )
+            .returns(Deferred::class as TypeName)
+            .beginControlFlow("val deferred = CompletableDeferred<T>()")
+            .beginControlFlow("runBlocking {")
+            .addStatement("deferred.complete(block())")
+            .endControlFlow()
+            .addStatement("return deferred")
+            .build()
+            */
+
+        //
+        val companionObjectTypeSpec = TypeSpec.companionObjectBuilder()
+            .addFunction(
+                FunSpec
+                    .builder("invoke")
+                    .addModifiers(KModifier.OPERATOR)
+                    .returns(classDeclaration.toClassName())
+                    .addStatement("return Holder.INSTANCE")
+                    .build()
+            )
+
+        /*
+        companionObjectTypeSpec.addFunction(
+            FunSpec
+                .builder("suspend2deferred")
+                .addModifiers(KModifier.INLINE, KModifier.INTERNAL)
+                .addTypeVariable(VARIABLE_NAME_T.copy(reified = true))
+                .addParameter(
+                    "block", LambdaTypeName
+                        .get(returnType = VARIABLE_NAME_T)
+                        .copy(suspending = true), KModifier.CROSSINLINE
+                )
+                .returns(DEFERRED_CLASS_NAME.parameterizedBy(VARIABLE_NAME_T))
+                .addCode(
+                    buildCodeBlock {
+                        addStatement(
+                            "val deferred = %T<%N>()",
+                            COMPLETABLE_DEFERRED_CLASS_NAME,
+                            VARIABLE_NAME_T.name
+                        )
+                        beginControlFlow("%M ", RUN_BLOCKING_FLOW_FUNCTION)
+                        addStatement("deferred.complete(block())")
+                        endControlFlow()
+                        addStatement("return deferred")
+                    }
+                )
+                .build()
         )
+        */
+
+        implTypeSpec.addType(companionObjectTypeSpec.build())
         implTypeSpec.addType(
             TypeSpec.objectBuilder("Holder")
                 .addModifiers(KModifier.PRIVATE)
@@ -209,6 +327,7 @@ class DecoratorVisitor(
         }.toMutableList()
         val names = arrayListOf<Named>()
         names.addAll(parameterSpecs.map { Named(value = it.name, flag = Named.PARAMETER) })
+
         val hasJsonKey = parameters.any(HAS_JSON_KEY)
         if (hasJsonKey) {
             val produce = Named.produce(names)
@@ -224,8 +343,10 @@ class DecoratorVisitor(
                 ParameterSpec
                     .builder(pName, ANY_NULLABLE)
                     .addAnnotation(
-                        AnnotationSpec.builder(annotation)
-                            .addMember(memberFormat ?: "", value ?: "").build()
+                        AnnotationSpec
+                            .builder(annotation)
+                            .addMember(memberFormat ?: "", value ?: "")
+                            .build()
                     )
                     .build()
             }
@@ -269,26 +390,26 @@ class DecoratorVisitor(
         modifiers: List<KModifier>,
         returnType: TypeName,
         appends: ArrayList<AppendRes>,
-        name: String
+        name: String,
+        cacheBean: CacheBean? = null
     ) {
         val names = arrayListOf<Named>()
         names.addAll(parameters.map {
             val flag = if (it.any(JSON_KEY)) Named.TEMPORARY else Named.PARAMETER
             Named(value = it.name!!.getShortName(), flag = flag)
         })
+        names.addAll(allNames)
         val jsonKeys = parameters.filter(HAS_JSON_KEY)
 
         val funSpecBuilder = FunSpec.builder(funcName)
             .addModifiers(modifiers)
             .addModifiers(KModifier.OVERRIDE)
             .returns(returnType)
-            .addParameters(
-                parameters.map {
-                    val pType: TypeName = it.type.toTypeName()
-                    val pName = it.name?.getShortName()!!
-                    ParameterSpec.builder(pName, pType).build()
-                }
-            )
+            .addParameters(parameters.map {
+                val pType: TypeName = it.type.toTypeName()
+                val pName = it.name?.getShortName()!!
+                ParameterSpec.builder(pName, pType).build()
+            })
 
         if (jsonKeys.isNotEmpty()) {
             val named = Named(value = Named.produce(names), flag = Named.VARIABLE)
@@ -309,17 +430,22 @@ class DecoratorVisitor(
          val v1 = MyStringProvider4().provide("kkk")
          */
         val (pathTypeName, path) = pathRes
-        for (res in appends) {
-            val named = Named(
-                value = Named.produce(names),
-                flag = Named.VARIABLE + Named.TEMPORARY + Named.TO_JSON
-            )
-            names.add(named)
 
-            funSpecBuilder.addStatement(
-                "val %N = %T().provide(%T(%S),%S)",
-                named.value, res.provider, pathTypeName, path, res.name ?: ""
-            )
+        if (cacheBean != null || appends.isNotEmpty()) {
+            val pathNamed = Named(Named.produce(names), Named.TEMPORARY or Named.PATH_NAME)
+            names.add(pathNamed)
+            funSpecBuilder.addStatement("val %N = %T(%S)", pathNamed.value, pathTypeName, path)
+        }
+        if (appends.isNotEmpty()) {
+            val pathNamed = names.find { it.flag intersect Named.PATH_NAME }!!
+            for (res in appends) {
+                val named = Named(Named.produce(names), Named.VARIABLE or Named.TEMPORARY)
+                names.add(named)
+                funSpecBuilder.addStatement(
+                    "val %N = %T().provide(%N,%S)",
+                    named.value, res.provider, pathNamed.value, res.name ?: ""
+                )
+            }
         }
         val returnRawType = if (returnType is ParameterizedTypeName) {
             returnType.rawType
@@ -329,16 +455,11 @@ class DecoratorVisitor(
 
         val args = buildString {
             val values = names.filter {
-                it.flag and Named.PARAMETER == Named.PARAMETER
-                        || it.flag and Named.VARIABLE == Named.VARIABLE
+                it.flag intersect Named.PARAMETER || it.flag intersect Named.VARIABLE
             }
             for (index in values.indices) {
                 val named = values[index]
-                if (named.flag and Named.TO_JSON == Named.TO_JSON) {
-                    append("v${index + 1} = ${named.value}, ")
-                } else {
-                    append("v${index + 1} = ${named.value}, ")
-                }
+                append("v${index + 1} = ${named.value}, ")
                 if (index < values.size - 1) {
                     append(WRAP)
                 }
@@ -346,16 +467,28 @@ class DecoratorVisitor(
         }
         when (returnRawType) {
             FLOW_CLASS_NAME -> {
-                funSpecBuilder.addStatement(
-                    "return onCreator.suspend2flow{\rapi.%N(%L)\r}",
-                    name, args
-                )
+                if (cacheBean == null) {
+                    funSpecBuilder.addCode(buildCodeBlock {
+                        beginControlFlow("return %M", FLOW_FUNCTION)
+                        addStatement("emit(api.%N(%L))", name, args)
+                        endControlFlow()
+                    })
+                } else {
+                    val (mode, pipelineT, pipelineReturn, classKind, named) = cacheBean
+                    val pathNamed = names.find { it.flag intersect Named.PATH_NAME }!!
+                    funSpecBuilder.addCode(buildCodeBlock {
+                        beginControlFlow(
+                            "return %T.%L(%N,%N)", Mode::class, mode, pathNamed.value, named.value
+                        )
+                        addStatement("api.%N(%L)", name, args)
+                        endControlFlow()
+                    })
+                }
             }
 
             DEFERRED_CLASS_NAME -> {
                 funSpecBuilder.addStatement(
-                    "return onCreator.suspend2deferred{\rapi.%N(%L)\n}",
-                    name, args
+                    "return %M{\rapi.%N(%L)\n}", SUSPEND_2_DEFERRED_FUNCTION, name, args
                 )
             }
 

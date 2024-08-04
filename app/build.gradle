@@ -47,12 +47,14 @@ android {
         kotlinCompilerExtensionVersion = "1.4.3"
     }
 
+    /*
     packaging {
         resources {
             // noinspection GrDeprecatedAPIUsage
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+    */
 }
 
 dependencies {

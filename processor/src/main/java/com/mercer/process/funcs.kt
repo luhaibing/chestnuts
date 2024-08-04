@@ -3,17 +3,22 @@ package com.mercer.process
 import com.google.devtools.ksp.KSTypeNotPresentException
 import com.google.devtools.ksp.KspExperimental
 import com.google.devtools.ksp.getAnnotationsByType
+import com.google.devtools.ksp.processing.Resolver
 import com.google.devtools.ksp.symbol.KSAnnotated
+import com.google.devtools.ksp.symbol.KSClassDeclaration
 import com.google.devtools.ksp.symbol.KSFunctionDeclaration
 import com.mercer.annotate.http.Append
 import com.mercer.annotate.http.JsonKey
+import com.mercer.core.CachePipeline
 import com.mercer.core.Path
 import com.mercer.core.Type
 import com.mercer.process.mode.AppendRes
 import com.mercer.process.mode.PathRes
+import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.TypeName
+import com.squareup.kotlinpoet.asClassName
 import com.squareup.kotlinpoet.asTypeName
 import com.squareup.kotlinpoet.ksp.toAnnotationSpec
 import com.squareup.kotlinpoet.ksp.toClassName
@@ -201,4 +206,30 @@ fun KSFunctionDeclaration.toPathRes(): PathRes? {
 
     return null
 
+}
+
+infix fun Int.intersect(value: Int): Boolean {
+    return this and value == value
+}
+
+
+fun Resolver.parse(value: KSClassDeclaration): TypeName {
+    for (superType in value.superTypes) {
+        val ksType = superType.resolve()
+        val toClassName = ksType.toClassName()
+        return when (toClassName) {
+            CACHE_PIPELINE_CLASS_NAME -> {
+                ksType.arguments.first().type!!.resolve().toTypeName()
+            }
+
+            ANY -> {
+                throw IllegalArgumentException()
+            }
+
+            else -> {
+                parse(ksType.declaration as KSClassDeclaration)
+            }
+        }
+    }
+    throw IllegalArgumentException()
 }

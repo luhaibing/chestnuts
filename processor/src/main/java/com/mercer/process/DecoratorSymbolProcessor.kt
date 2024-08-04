@@ -33,7 +33,7 @@ class DecoratorSymbolProcessor(
             val implName = it.simpleName.asString() + "Impl"
             val apiTypeSpec = TypeSpec.interfaceBuilder(apiName)
             val implTypSpec = TypeSpec.classBuilder(implName)
-            it.accept(DecoratorVisitor(env, packageName, apiTypeSpec, implTypSpec), Unit)
+            it.accept(DecoratorVisitor(env,resolver, packageName, apiTypeSpec, implTypSpec), Unit)
             it to arrayOf(apiTypeSpec, implTypSpec)
         }.forEach { (node, specs) ->
             val (apiTypeBuilder, implTypeBuilder) = specs

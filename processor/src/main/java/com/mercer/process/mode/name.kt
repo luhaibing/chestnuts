@@ -21,14 +21,20 @@ data class Named(
         // 临时
         const val TEMPORARY = VARIABLE shl 1
 
-        // 需要转换 toString
-        const val TO_JSON = TEMPORARY shl 1
+        //全局变量
+        const val GLOBAL_VARIABLE = TEMPORARY shl 1
 
-        fun produce(excludes: List<Named>): String {
+        // [特有属性] path
+        const val PATH_NAME = GLOBAL_VARIABLE shl 1
+
+        // [特有属性] pipeline
+        const val PIPELINE_NAME = PATH_NAME shl 1
+
+        fun produce(excludes: List<Named>, namePrefix: String = "v"): String {
             val names = excludes.map { it.value }
             var position = 1
             while (true) {
-                val name = "v$position"
+                val name = "$namePrefix$position"
                 position += 1
                 if (name in names) {
                     continue
