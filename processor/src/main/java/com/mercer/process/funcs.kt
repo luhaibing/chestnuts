@@ -9,7 +9,6 @@ import com.google.devtools.ksp.symbol.KSClassDeclaration
 import com.google.devtools.ksp.symbol.KSFunctionDeclaration
 import com.mercer.annotate.http.Append
 import com.mercer.annotate.http.JsonKey
-import com.mercer.core.CachePipeline
 import com.mercer.core.Path
 import com.mercer.core.Type
 import com.mercer.process.mode.AppendRes
@@ -18,7 +17,6 @@ import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.TypeName
-import com.squareup.kotlinpoet.asClassName
 import com.squareup.kotlinpoet.asTypeName
 import com.squareup.kotlinpoet.ksp.toAnnotationSpec
 import com.squareup.kotlinpoet.ksp.toClassName
@@ -213,7 +211,7 @@ infix fun Int.intersect(value: Int): Boolean {
 }
 
 
-fun Resolver.parse(value: KSClassDeclaration): TypeName {
+fun Resolver.parsePipelineReturnTypeName(value: KSClassDeclaration): TypeName {
     for (superType in value.superTypes) {
         val ksType = superType.resolve()
         val toClassName = ksType.toClassName()
@@ -227,9 +225,32 @@ fun Resolver.parse(value: KSClassDeclaration): TypeName {
             }
 
             else -> {
-                parse(ksType.declaration as KSClassDeclaration)
+                parsePipelineReturnTypeName(ksType.declaration as KSClassDeclaration)
             }
         }
     }
     throw IllegalArgumentException()
 }
+
+/**
+ * 是否是 OnShared 的子类
+ */
+fun Resolver.isSubClassOfOnShared(value: KSClassDeclaration): Boolean {
+    for (superType in value.superTypes) {
+        val ksType = superType.resolve()
+        val toClassName = ksType.toClassName()
+        return when (toClassName) {
+            ON_SHARED_CLASS_NAME -> {
+                return true
+            }
+            ANY -> {
+                false
+            }
+            else -> {
+                isSubClassOfOnShared(ksType.declaration as KSClassDeclaration)
+            }
+        }
+    }
+    return false
+}
+

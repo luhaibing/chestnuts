@@ -3,7 +3,9 @@ package com.mercer.process
 import com.google.devtools.ksp.KspExperimental
 import com.google.devtools.ksp.getAnnotationsByType
 import com.google.devtools.ksp.getClassDeclarationByName
+import com.google.devtools.ksp.getConstructors
 import com.google.devtools.ksp.getDeclaredFunctions
+import com.google.devtools.ksp.isAbstract
 import com.google.devtools.ksp.processing.Resolver
 import com.google.devtools.ksp.processing.SymbolProcessorEnvironment
 import com.google.devtools.ksp.symbol.ClassKind
@@ -88,12 +90,66 @@ class DecoratorVisitor(
             .forEach {
                 visitFunctionDeclaration(it, Unit)
             }
+
+        logger.warn("classDeclaration  >>> $classDeclaration")
+
+        // 内部所有实现了 OnShared 接口的类/接口
+        val innerClassDeclarations = classDeclaration
+            .declarations
+            .filterIsInstance<KSClassDeclaration>()
+            .filter { resolver.isSubClassOfOnShared(it) }
+            .toList()
+
+        (innerClassDeclarations.filter {
+            it.classKind == ClassKind.INTERFACE
+        } + innerClassDeclarations.filter {
+            it.classKind == ClassKind.CLASS && it.isAbstract()
+        }.filter {
+            0 in it.getConstructors().map { f -> f.parameters.size }.toList()
+        }).forEach {
+            // TODO: 验证是否只有一个抽象函数被注解[PUT DELETE POST GET HTTP] 
+            val ksFunctionDeclaration = it.getDeclaredFunctions().first()
+            ksFunctionDeclaration.validate()
+            val funcName = arrayOf(it, ksFunctionDeclaration).joinToString("_") { e ->
+                e.simpleName.getShortName()
+            }
+            parseFunctionDeclaration(ksFunctionDeclaration, funcName, FLAG_NONE)
+        }
+
+
+        /*
+        val sharedKSClassDeclarations = classDeclaration
+            .declarations
+            .filterIsInstance<KSClassDeclaration>()
+            .filter {
+                // 为接口 或者 抽象类
+                it.classKind == ClassKind.INTERFACE ||
+                        (it.classKind == ClassKind.CLASS && it.isAbstract())
+            }
+            .onEach {
+                logger.warn("it.getConstructors() >>> ${it.getConstructors().toList()}")
+                logger.warn("it.superTypes >>> ${it.superTypes.toList()}")
+                logger.warn("it.isSubClassOfOnShared >>> ${resolver.isSubClassOfOnShared(it)}")
+                logger.warn("OnShared::class.asClassName() >>> ${OnShared::class.asClassName()}")
+                logger.warn("OnShared::class.asTypeName() >>> ${OnShared::class.asTypeName()}")
+            }
+            .toList()
+            */
+
+    }
+
+    override fun visitFunctionDeclaration(function: KSFunctionDeclaration, data: Unit) {
+        super.visitFunctionDeclaration(function, data)
+        val funcName = function.simpleName.getShortName()
+        parseFunctionDeclaration(function, funcName, FLAG_OVERRIDE)
     }
 
     @OptIn(KspExperimental::class)
-    override fun visitFunctionDeclaration(function: KSFunctionDeclaration, data: Unit) {
-        super.visitFunctionDeclaration(function, data)
-
+    private fun parseFunctionDeclaration(
+        function: KSFunctionDeclaration,
+        funcName: String,
+        flag: Int
+    ) {
         val appends = arrayListOf<AppendRes>()
         appends.addAll(function.toAppends())
         val includes = appends.map { it.toName() }
@@ -117,7 +173,8 @@ class DecoratorVisitor(
             val cache = caches.first()
             val pipeline = parseToTypeName { cache.value }
             val declaration = resolver.getClassDeclarationByName(pipeline.toString())!!
-            val pipelineFunctionReturn = resolver.parse(declaration)
+            // TODO: 需要验证 是否存在 无参的构造函数
+            val pipelineFunctionReturn = resolver.parsePipelineReturnTypeName(declaration)
             pipelines.add(pipeline to pipelineFunctionReturn)
             val name = Named.produce(allNames, "pipeline")
             val named = Named(name, Named.GLOBAL_VARIABLE or Named.PIPELINE_NAME)
@@ -129,7 +186,6 @@ class DecoratorVisitor(
 
         val parameters = function.parameters
 
-        val funcName = function.simpleName.getShortName()
         val name = generateApiFunction(
             parameters, appends, funcName, function, modifiers, returnType,
         )
@@ -138,16 +194,10 @@ class DecoratorVisitor(
         private val api by lazy {
             onCreator.create(TestKotlinApi::class)
         }
-         */
-        val apiClassName = apiTypeName
-        PropertySpec.builder("api", apiClassName)
-            .addModifiers(KModifier.PRIVATE)
-            .delegate("lazy { onCreator.create(%T::class)}", apiClassName)
-            .build()
+        */
 
         if (cacheBean != null) {
             // logger.warn("cacheBean >>> $cacheBean")
-            PropertySpec.builder(cacheBean.named.value, cacheBean.pipeline)
             implTypeSpec.addProperty(
                 PropertySpec.builder(cacheBean.named.value, cacheBean.pipeline)
                     .addModifiers(KModifier.PRIVATE)
@@ -162,10 +212,10 @@ class DecoratorVisitor(
             )
         }
 
-
         val pathRes = function.toPathRes() ?: throw RuntimeException("pathRes is null")
+
         generateImplFunction(
-            pathRes, parameters, funcName, modifiers, returnType, appends, name, cacheBean
+            pathRes, parameters, funcName, modifiers, returnType, appends, name, cacheBean, flag
         )
 
     }
@@ -217,12 +267,14 @@ class DecoratorVisitor(
             */
 
         //
+
         val companionObjectTypeSpec = TypeSpec.companionObjectBuilder()
             .addFunction(
                 FunSpec
                     .builder("invoke")
                     .addModifiers(KModifier.OPERATOR)
-                    .returns(classDeclaration.toClassName())
+                    // .returns(classDeclaration.toClassName())
+                    .returns(implTypeName)
                     .addStatement("return Holder.INSTANCE")
                     .build()
             )
@@ -262,7 +314,8 @@ class DecoratorVisitor(
                 .addModifiers(KModifier.PRIVATE)
                 .addProperty(
                     PropertySpec
-                        .builder("INSTANCE", classDeclaration.toClassName())
+                        // .builder("INSTANCE", classDeclaration.toClassName())
+                        .builder("INSTANCE", implTypeName)
                         .initializer("%T()", implTypeName)
                         .build()
                 )
@@ -391,7 +444,8 @@ class DecoratorVisitor(
         returnType: TypeName,
         appends: ArrayList<AppendRes>,
         name: String,
-        cacheBean: CacheBean? = null
+        cacheBean: CacheBean? = null,
+        flag: Int
     ) {
         val names = arrayListOf<Named>()
         names.addAll(parameters.map {
@@ -403,7 +457,11 @@ class DecoratorVisitor(
 
         val funSpecBuilder = FunSpec.builder(funcName)
             .addModifiers(modifiers)
-            .addModifiers(KModifier.OVERRIDE)
+            .apply {
+                if (flag intersect FLAG_OVERRIDE) {
+                    addModifiers(KModifier.OVERRIDE)
+                }
+            }
             .returns(returnType)
             .addParameters(parameters.map {
                 val pType: TypeName = it.type.toTypeName()

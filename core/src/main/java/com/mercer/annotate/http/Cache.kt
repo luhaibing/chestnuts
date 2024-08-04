@@ -1,5 +1,6 @@
 package com.mercer.annotate.http
 
+import com.mercer.core.CachePipeline
 import com.mercer.core.Mode
 import kotlin.reflect.KClass
 
@@ -12,6 +13,6 @@ import kotlin.reflect.KClass
 @Retention(AnnotationRetention.SOURCE)
 @Target(AnnotationTarget.FUNCTION)
 annotation class Cache(
-    val value: KClass<*>,
+    val value: KClass<out CachePipeline<*>>,
     val mode: Mode = Mode.DEFAULT
 )
