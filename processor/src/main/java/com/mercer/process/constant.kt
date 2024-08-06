@@ -27,15 +27,16 @@ val STRING_NULLABLE = STRING.copy(nullable = true)
 val ANY_NULLABLE = Any::class.asClassName().copy(nullable = true)
 
 val FLOW_FUNCTION = MemberName("kotlinx.coroutines.flow", "flow")
+val ON_EACH_FUNCTION = MemberName("kotlinx.coroutines.flow", "onEach")
 val RUN_BLOCKING_FLOW_FUNCTION = MemberName("kotlinx.coroutines", "runBlocking")
 val SUSPEND_2_DEFERRED_FUNCTION = MemberName("com.mercer.core", "suspend2deferred")
+val LAUNCH_FUNCTION_NAME = MemberName("kotlinx.coroutines","launch")
 
 val VARIABLE_NAME_T = TypeVariableName.invoke("T")
 
 const val WRAP = "\r\n"
 
 val COMPLETABLE_DEFERRED_CLASS_NAME = CompletableDeferred::class.asClassName()
-
 
 const val FLAG_NONE = 1
 const val FLAG_OVERRIDE = FLAG_NONE shl 1

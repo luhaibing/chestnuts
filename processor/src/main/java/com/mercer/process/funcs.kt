@@ -31,6 +31,7 @@ import retrofit2.http.POST
 import retrofit2.http.PUT
 import java.security.MessageDigest
 import java.util.Locale
+import javax.swing.text.Position
 
 /**
  * author:  mercer
@@ -254,3 +255,23 @@ fun Resolver.isSubClassOfOnShared(value: KSClassDeclaration): Boolean {
     return false
 }
 
+fun Resolver.parseSuperTypesArgumentTypeName(value: KSClassDeclaration,target: ClassName,position: Int=0): TypeName {
+    for (superType in value.superTypes) {
+        val ksType = superType.resolve()
+        val toClassName = ksType.toClassName()
+        return when (toClassName) {
+            target -> {
+                ksType.arguments[position].type!!.resolve().toTypeName()
+            }
+
+            ANY -> {
+                throw IllegalArgumentException()
+            }
+
+            else -> {
+                parsePipelineReturnTypeName(ksType.declaration as KSClassDeclaration)
+            }
+        }
+    }
+    throw IllegalArgumentException()
+}

@@ -18,6 +18,7 @@ import com.google.devtools.ksp.validate
 import com.mercer.annotate.http.Cache
 import com.mercer.annotate.http.Decorator
 import com.mercer.annotate.http.JsonKey
+import com.mercer.annotate.http.Shared
 import com.mercer.core.Mode
 import com.mercer.process.mode.AppendRes
 import com.mercer.process.mode.CacheBean
@@ -30,15 +31,22 @@ import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
 import com.squareup.kotlinpoet.ParameterSpec
 import com.squareup.kotlinpoet.ParameterizedTypeName
+import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.PropertySpec
 import com.squareup.kotlinpoet.STRING
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.TypeSpec
 import com.squareup.kotlinpoet.asClassName
+import com.squareup.kotlinpoet.asTypeName
 import com.squareup.kotlinpoet.buildCodeBlock
 import com.squareup.kotlinpoet.ksp.toClassName
 import com.squareup.kotlinpoet.ksp.toKModifier
 import com.squareup.kotlinpoet.ksp.toTypeName
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import retrofit2.http.Body
 
 /**
@@ -69,9 +77,10 @@ class DecoratorVisitor(
     }
 
     private lateinit var topAppends: List<AppendRes>
-    private val pipelines by lazy { hashSetOf<Pair<TypeName, TypeName>>() }
+    private val pipelines by lazy { hashMapOf<TypeName, CacheBean>() }
     private val allNames = arrayListOf<Named>()
 
+    @OptIn(KspExperimental::class)
     override fun visitClassDeclaration(classDeclaration: KSClassDeclaration, data: Unit) {
         super.visitClassDeclaration(classDeclaration, data)
         topAppends = classDeclaration.toAppends()
@@ -91,13 +100,15 @@ class DecoratorVisitor(
                 visitFunctionDeclaration(it, Unit)
             }
 
-        logger.warn("classDeclaration  >>> $classDeclaration")
+        // logger.warn("classDeclaration  >>> $classDeclaration")
 
         // 内部所有实现了 OnShared 接口的类/接口
         val innerClassDeclarations = classDeclaration
             .declarations
             .filterIsInstance<KSClassDeclaration>()
-            .filter { resolver.isSubClassOfOnShared(it) }
+            .filter {
+                resolver.isSubClassOfOnShared(it)
+            }
             .toList()
 
         (innerClassDeclarations.filter {
@@ -105,37 +116,162 @@ class DecoratorVisitor(
         } + innerClassDeclarations.filter {
             it.classKind == ClassKind.CLASS && it.isAbstract()
         }.filter {
+            // 必须有无参构造
             0 in it.getConstructors().map { f -> f.parameters.size }.toList()
         }).forEach {
-            // TODO: 验证是否只有一个抽象函数被注解[PUT DELETE POST GET HTTP] 
+            // TODO: 验证是否只有一个抽象函数被注解[PUT DELETE POST GET HTTP]
             val ksFunctionDeclaration = it.getDeclaredFunctions().first()
             ksFunctionDeclaration.validate()
             val funcName = arrayOf(it, ksFunctionDeclaration).joinToString("_") { e ->
                 e.simpleName.getShortName()
             }
             parseFunctionDeclaration(ksFunctionDeclaration, funcName, FLAG_NONE)
+
+            val funcSimpleName = ksFunctionDeclaration.simpleName.getShortName()
+            val pathRes =
+                ksFunctionDeclaration.toPathRes() ?: throw RuntimeException("pathRes is null")
+            val (pathTypeName, path) = pathRes
+
+            val sharedTypeSpec = TypeSpec
+                .classBuilder("${it.simpleName.getShortName()}Impl")
+                .addModifiers(KModifier.INNER)
+
+            if (it.classKind == ClassKind.INTERFACE) {
+                sharedTypeSpec.addSuperinterface(it.toClassName())
+            } else {
+                sharedTypeSpec.superclass(it.toClassName())
+            }
+
+            val pNames = ksFunctionDeclaration
+                .parameters
+                .joinToString(",") { e ->
+                    e.name!!.getShortName()
+                }
+
+            sharedTypeSpec.addFunction(
+                FunSpec.builder(funcSimpleName)
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addModifiers(ksFunctionDeclaration.modifiers
+                        .mapNotNull { e ->
+                            e.toKModifier()
+                        }.filter { e ->
+                            e != KModifier.ABSTRACT
+                        }
+                    )
+                    .addParameters(ksFunctionDeclaration.parameters.map { p ->
+                        val pType: TypeName = p.type.toTypeName()
+                        val pName = p.name!!.getShortName()
+                        ParameterSpec.builder(pName, pType).build()
+                    })
+                    .returns(ksFunctionDeclaration.returnType!!.toTypeName())
+                    // .addStatement("TODO()")
+                    .addCode(buildCodeBlock {
+                        add("return %N(%L)", funcName, pNames)
+                        beginControlFlow(".%M", ON_EACH_FUNCTION)
+                        addStatement("pipeline.write(%T(%S), it)", pathTypeName, path)
+                        endControlFlow()
+                    })
+                    .build()
+            )
+
+            val argumentTypeName =
+                resolver.parseSuperTypesArgumentTypeName(it, ON_SHARED_CLASS_NAME)
+
+            val asTypeName = MutableStateFlow::class.asTypeName()
+                .parameterizedBy(argumentTypeName.copy(nullable = true))
+
+            sharedTypeSpec.addProperty(
+                PropertySpec
+                    .builder("currentFlow", asTypeName)
+                    .addModifiers(KModifier.OVERRIDE)
+                    .initializer("MutableStateFlow(null)")
+                    .build()
+            )
+
+            val shared = it.getAnnotationsByType(Shared::class).first()
+            val sharedPipelineTypeName = parseToTypeName { shared.value }
+            var cacheBean = pipelines[sharedPipelineTypeName]
+            if (cacheBean == null) {
+                val declaration =
+                    resolver.getClassDeclarationByName(sharedPipelineTypeName.toString())!!
+                val pipelineFunctionReturn = resolver.parsePipelineReturnTypeName(declaration)
+                val name = Named.produce(allNames, "pipeline")
+                val named = Named(name, Named.GLOBAL_VARIABLE or Named.PIPELINE_NAME)
+                cacheBean = CacheBean(
+                    Mode.DEFAULT,
+                    sharedPipelineTypeName,
+                    pipelineFunctionReturn,
+                    declaration.classKind,
+                    named
+                )
+                pipelines[sharedPipelineTypeName] = cacheBean
+            }
+            sharedTypeSpec.addProperty(
+                PropertySpec
+                    .builder("pipeline", sharedPipelineTypeName)
+                    // TODO:
+                    .addModifiers(KModifier.OVERRIDE)
+                    .apply {
+                        if (cacheBean != null) {
+                            initializer(cacheBean.named.value)
+                        } else {
+                            initializer("TODO()")
+                        }
+                    }
+                    .build()
+            )
+
+            sharedTypeSpec.addProperty(
+                PropertySpec.builder("exceptionHandler", CoroutineExceptionHandler::class)
+                    .initializer(
+                        """
+                        CoroutineExceptionHandler { _, throwable -> throwable.printStackTrace() }
+                        """.trimIndent()
+                    )
+                    .build()
+            )
+            sharedTypeSpec.addProperty(
+                PropertySpec.builder("scope", CoroutineScope::class)
+                    .initializer(
+                        """
+                        CoroutineScope(
+                            %T.IO + exceptionHandler + %T(%S)
+                        )
+                        """.trimIndent(),
+                        Dispatchers::class.asClassName(),
+                        CoroutineName::class.asClassName(),
+                        it.toClassName().toString()
+                    )
+                    .build()
+            )
+
+
+            sharedTypeSpec.addInitializerBlock(buildCodeBlock {
+                beginControlFlow("scope.%M", LAUNCH_FUNCTION_NAME)
+                addStatement("""val value = pipeline.read(%T(%S))""", pathTypeName, path)
+                addStatement("""currentFlow.emit(value)""")
+                endControlFlow()
+            }).build()
+
+            implTypeSpec.addType(sharedTypeSpec.build())
         }
 
+        pipelines.values.forEach { cacheBean ->
+            // logger.warn("cacheBean >>> $cacheBean")
+            implTypeSpec.addProperty(
+                PropertySpec.builder(cacheBean.named.value, cacheBean.pipeline)
+                    .addModifiers(KModifier.PRIVATE)
+                    .apply {
+                        if (cacheBean.classKind == ClassKind.OBJECT) {
+                            initializer("%T", cacheBean.pipeline)
+                        } else {
+                            delegate("lazy { %T() }", cacheBean.pipeline)
+                        }
+                    }
+                    .build()
+            )
 
-        /*
-        val sharedKSClassDeclarations = classDeclaration
-            .declarations
-            .filterIsInstance<KSClassDeclaration>()
-            .filter {
-                // 为接口 或者 抽象类
-                it.classKind == ClassKind.INTERFACE ||
-                        (it.classKind == ClassKind.CLASS && it.isAbstract())
-            }
-            .onEach {
-                logger.warn("it.getConstructors() >>> ${it.getConstructors().toList()}")
-                logger.warn("it.superTypes >>> ${it.superTypes.toList()}")
-                logger.warn("it.isSubClassOfOnShared >>> ${resolver.isSubClassOfOnShared(it)}")
-                logger.warn("OnShared::class.asClassName() >>> ${OnShared::class.asClassName()}")
-                logger.warn("OnShared::class.asTypeName() >>> ${OnShared::class.asTypeName()}")
-            }
-            .toList()
-            */
-
+        }
     }
 
     override fun visitFunctionDeclaration(function: KSFunctionDeclaration, data: Unit) {
@@ -175,11 +311,18 @@ class DecoratorVisitor(
             val declaration = resolver.getClassDeclarationByName(pipeline.toString())!!
             // TODO: 需要验证 是否存在 无参的构造函数
             val pipelineFunctionReturn = resolver.parsePipelineReturnTypeName(declaration)
-            pipelines.add(pipeline to pipelineFunctionReturn)
             val name = Named.produce(allNames, "pipeline")
             val named = Named(name, Named.GLOBAL_VARIABLE or Named.PIPELINE_NAME)
             allNames.add(named)
-            CacheBean(cache.mode, pipeline, pipelineFunctionReturn, declaration.classKind, named)
+            CacheBean(
+                cache.mode,
+                pipeline,
+                pipelineFunctionReturn,
+                declaration.classKind,
+                named
+            ).also {
+                pipelines[pipeline] = it
+            }
         } else {
             null
         }
@@ -196,6 +339,7 @@ class DecoratorVisitor(
         }
         */
 
+        /*
         if (cacheBean != null) {
             // logger.warn("cacheBean >>> $cacheBean")
             implTypeSpec.addProperty(
@@ -211,6 +355,7 @@ class DecoratorVisitor(
                     .build()
             )
         }
+        */
 
         val pathRes = function.toPathRes() ?: throw RuntimeException("pathRes is null")
 

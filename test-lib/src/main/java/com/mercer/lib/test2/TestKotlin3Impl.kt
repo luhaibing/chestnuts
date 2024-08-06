@@ -239,10 +239,17 @@ class TestKotlin3Impl : TestKotlin2 {
         }
     }
 
-    private inner class UserImpl :
+    private inner class UserImpl3 :
         TestKotlin2.User /*, AbsSharedData<NetResult<String>>("TestKotlin2.User")*/ {
 
         val currentAsFlow = MutableStateFlow<NetResult<String>?>(null)
+        override suspend fun test12(
+            age: Int,
+            height: Float,
+            name: String
+        ): Flow<NetResult<String>> {
+            TODO("Not yet implemented")
+        }
 
         override val pipeline: CachePipeline<NetResult<String>> = this@TestKotlin3Impl.pipeline
 
@@ -263,7 +270,7 @@ class TestKotlin3Impl : TestKotlin2 {
             }
         }
 
-        override suspend fun test12(v1: Int, v2: Float, v3: Int): Flow<NetResult<String>> {
+         suspend fun test12(v1: Int, v2: Float, v3: Int): Flow<NetResult<String>> {
             return TestKotlin3Impl().func12(v1, v2, v3).onEach {
                 pipeline.write(Path.POST("/test11"), it)
             }
@@ -274,12 +281,55 @@ class TestKotlin3Impl : TestKotlin2 {
     companion object {
         operator fun invoke(): TestKotlin3Impl = Holder.INSTANCE
         val user: TestKotlin2.User by lazy {
-            Holder.INSTANCE.UserImpl()
+            Holder.INSTANCE.UserImpl3()
         }
     }
 
     private object Holder {
         val INSTANCE: TestKotlin3Impl = TestKotlin3Impl()
+    }
+
+
+    public class UserImpl : TestKotlin2.User {
+
+
+        override suspend fun test12(
+            age: Int,
+            height: Float,
+            name: String
+        ): Flow<NetResult<String>> {
+            TODO("Not yet implemented")
+        }
+
+        override val pipeline: CachePipeline<NetResult<String>> = TODO()
+        override val currentFlow: MutableStateFlow<NetResult<String>?> = MutableStateFlow(null)
+
+    }
+
+    public inner class User2Impl : TestKotlin2.User2() {
+
+        override suspend fun test13(
+            age: Int,
+            height: Float,
+            name: String,
+        ): Flow<NetResult<String>> {
+            return User2_test13(age = age, height = height, name = name).onEach {
+                pipeline.write(Path.POST("/test12"), it)
+            }
+        }
+
+
+        override val pipeline: CachePipeline<NetResult<String>> = TODO()
+        override val currentFlow: MutableStateFlow<NetResult<String>?> = MutableStateFlow(null)
+
+    }
+
+    fun User2_test13(
+        age: Int,
+        height: Float,
+        name: String,
+    ): Flow<NetResult<String>> {
+        TODO()
     }
 
 }

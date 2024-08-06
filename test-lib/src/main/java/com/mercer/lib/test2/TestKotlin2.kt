@@ -45,26 +45,22 @@ interface TestKotlin2 {
 
         @POST("/test12")
         suspend fun test12(
-            @JsonKey("v1") v1: Int,
-            @JsonKey("v2") v2: Float,
-            @Query("v3") v3: Int,
+            @JsonKey("age") age: Int,
+            @JsonKey("height") height: Float,
+            @Query("name") name: String,
         ): Flow<NetResult<String>>
 
     }
 
-    abstract class User3(
-        val xx:String,
-    ) : OnShared<NetResult<String>>
-
-    @Shared(SimpleCachePipeline::class)
-    abstract class User2 : User3("xxx") {
+    @Shared(SimpleCachePipeline3::class)
+    abstract class User2 : OnShared<NetResult<Int>> {
 
         @POST("/test12")
         abstract suspend fun test13(
-            @JsonKey("v1") v1: Int,
-            @JsonKey("v2") v2: Float,
-            @Query("v3") v3: Int,
-        ): Flow<NetResult<String>>
+            @JsonKey("age") age: Int,
+            @JsonKey("height") height: Float,
+            @Query("name") name: String,
+        ): Flow<NetResult<Int>>
 
     }
 

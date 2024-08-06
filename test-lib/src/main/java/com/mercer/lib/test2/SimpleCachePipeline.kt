@@ -34,3 +34,15 @@ data object SimpleCachePipeline2 : AbsCachePipeline {
     }
 
 }
+
+data object SimpleCachePipeline3 : CachePipeline<NetResult<Int>> {
+
+    override suspend fun write(path: Path, value: NetResult<Int>?) {
+        TODO("Not yet implemented")
+    }
+
+    override suspend fun read(path: Path): NetResult<Int>? {
+        TODO("Not yet implemented")
+    }
+
+}

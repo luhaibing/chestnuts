@@ -150,7 +150,7 @@ enum class Mode : CacheStrategy {
  */
 interface CachePipeline<T> {
 
-    suspend fun read(path: Path?): T?
+    suspend fun read(path: Path): T?
 
     suspend fun write(path: Path, value: T?)
 
