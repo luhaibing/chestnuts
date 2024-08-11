@@ -3,6 +3,7 @@ package com.mercer.lib.test2
 import com.google.gson.Gson
 import com.mercer.core.Creator
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -46,5 +47,8 @@ class SimpleCreator : Creator {
         }
         return deferred
     }
+
+    override val scope: CoroutineScope
+        get() = TODO("Not yet implemented")
 
 }

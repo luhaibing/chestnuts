@@ -2,22 +2,21 @@ package com.mercer.library.test
 
 import com.mercer.annotate.http.Append
 import com.mercer.annotate.http.Decorator
-import com.mercer.core.Entry
 import com.mercer.core.Type
 import com.mercer.library.model.NetResult
 import kotlinx.coroutines.flow.Flow
 import retrofit2.http.*
 
 
-@Append(value = Type.FIELD, entry = Entry(name = "q112", value = MyStringProvider::class))
-@Append(value = Type.QUERY, entry = Entry(name = "q111", value = MyStringProvider1::class))
-@Append(value = Type.PART, entry = Entry(name = "q113", value = MyStringProvider2::class))
-@Append(value = Type.HEADER, entry = Entry(name = "q114", value = MyStringProvider3::class))
-//@Append(value = Type.BODY, entry = Entry(name = "", value = MyIntProvider::class))
+@Append(type = Type.FIELD,key = "q112", value = MyStringProvider::class)
+@Append(type = Type.QUERY,key = "q111", value = MyStringProvider1::class)
+@Append(type = Type.PART,key = "q113", value = MyStringProvider2::class)
+@Append(type = Type.HEADER,key = "q114", value = MyStringProvider3::class)
+//@Append(type = Type.BODY,key = "", value = MyIntProvider::class)
 @Decorator(SimpleCreator::class)
 interface TestKotlin {
 
-    @Append(value = Type.QUERY, entry = Entry(name = "q117", value = MyStringProvider4::class))
+    @Append(type = Type.QUERY,key = "q117", value = MyStringProvider4::class)
     @GET("/test0")
     fun func0(
         @QueryName(encoded = false) v1: String,
@@ -79,7 +78,7 @@ interface TestKotlin {
 //    ): Flow<NetResult<String>>
 //
 //
-//    @Append(value = Type.FIELD, entry = Entry(name = "q117", value = MyStringProvider5::class))
+//    @Append(type = Type.FIELD,key = "q117", value = MyStringProvider5::class)
 //    @GET("/test6")
 //    @Headers("Cache-Control: max-age=640000")
 //    fun func9(
