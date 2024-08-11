@@ -1,4 +1,4 @@
-package com.mercer.lib.test2
+package com.mercer.test.lib
 
 import com.google.gson.Gson
 import com.mercer.core.Creator
@@ -12,6 +12,12 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import kotlin.reflect.KClass
 
+/**
+ * author:  Mercer
+ * date:    2024/08/10
+ * desc:
+ *   api实例创建器
+ */
 class SimpleCreator : Creator {
 
     private val retrofit by lazy {
@@ -46,5 +52,11 @@ class SimpleCreator : Creator {
         }
         return deferred
     }
+
+    /*
+    override val scope: CoroutineScope by lazy {
+        CoroutineScope(Dispatchers.IO)
+    }
+    */
 
 }

@@ -1,4 +1,4 @@
-package com.mercer.lib.model
+package com.mercer.test.lib.model
 
 data class NetResult<T>(
     val code: Int,

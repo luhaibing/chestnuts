@@ -1,7 +1,7 @@
 package com.mercer.annotate.http
 
 /**
- * author:  mercer
+ * author:  Mercer
  * date:    2024/2/14 08:27
  * desc:
  *   包装成 @Body 时 使用的键和值
