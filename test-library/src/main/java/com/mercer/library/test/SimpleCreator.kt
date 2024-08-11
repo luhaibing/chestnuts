@@ -2,6 +2,7 @@ package com.mercer.library.test
 
 import com.google.gson.Gson
 import com.mercer.core.Creator
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -38,6 +39,9 @@ class SimpleCreator : Creator {
     override fun <T> suspend2deferred(block: suspend () -> T): Deferred<T> {
         TODO("Not yet implemented")
     }
+
+    override val scope: CoroutineScope
+        get() = TODO("Not yet implemented")
 
     private val gson by lazy { Gson() }
 

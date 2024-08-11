@@ -1,9 +1,12 @@
 package com.mercer.lib.test2
 
 import com.mercer.annotate.http.Append
+import com.mercer.annotate.http.Cache
 import com.mercer.annotate.http.Decorator
 import com.mercer.annotate.http.JsonKey
-import com.mercer.core.Entry
+import com.mercer.annotate.http.State
+import com.mercer.core.OnState
+//import com.mercer.core.Entry
 import com.mercer.core.Type
 import com.mercer.lib.model.NetResult
 import com.mercer.lib.model.Person
@@ -14,16 +17,16 @@ import okhttp3.RequestBody
 import retrofit2.http.*
 
 
-@Append(value = Type.QUERY, entry = Entry(name = "q112", value = MyStringProvider::class))
-@Append(value = Type.QUERY, entry = Entry(name = "q111", value = MyStringProvider1::class))
-@Append(value = Type.PART, entry = Entry(name = "q113", value = MyStringProvider2::class))
-@Append(value = Type.HEADER, entry = Entry(name = "q114", value = MyStringProvider3::class))
-//@Append(value = Type.BODY, entry = Entry(name = "", value = MyIntProvider::class))
+@Append(type = Type.QUERY, key = "q112", value = MyStringProvider::class)
+@Append(type = Type.QUERY, key = "q111", value = MyStringProvider1::class)
+@Append(type = Type.PART, key = "q113", value = MyStringProvider2::class)
+@Append(type = Type.HEADER, key = "q114", value = MyStringProvider3::class)
+// @Append(type = Type.BODY, key= "", value = MyIntProvider::class)
 @Decorator(SimpleCreator::class)
 interface TestKotlin {
 
-    @Append(value = Type.QUERY, entry = Entry(name = "q112", value = MyStringProvider4::class))
-    @Append(value = Type.QUERY, entry = Entry(name = "q111", value = MyStringProvider4::class))
+    @Append(type = Type.QUERY, key = "q112", value = MyStringProvider4::class)
+    @Append(type = Type.QUERY, key = "q111", value = MyStringProvider4::class)
     @GET("/test0")
     fun func1(
         @QueryName(encoded = false) v111: String,
@@ -32,8 +35,8 @@ interface TestKotlin {
         @JsonKey("kkk2") kkk2: String = "3",
     ): Deferred<NetResult<String>>
 
-    @Append(value = Type.QUERY, entry = Entry(name = "q112", value = MyStringProvider4::class))
-    @Append(value = Type.QUERY, entry = Entry(name = "q111", value = MyStringProvider4::class))
+    @Append(type = Type.QUERY, key = "q112", value = MyStringProvider4::class)
+    @Append(type = Type.QUERY, key = "q111", value = MyStringProvider4::class)
     @GET("/test0")
     suspend fun func2(
         @QueryName(encoded = false) v111: String,
@@ -97,7 +100,7 @@ interface TestKotlin {
     ): Flow<NetResult<String>>
 
 
-    @Append(value = Type.FIELD, entry = Entry(name = "q117", value = MyStringProvider5::class))
+    // @Append(type = Type.FIELD, key= "q117", value = MyStringProvider5::class)
     @GET("/test6")
     @Headers("Cache-Control: max-age=640000")
     fun func9(
@@ -107,7 +110,7 @@ interface TestKotlin {
         @QueryMap v4: Map<String, String>,
     ): Flow<NetResult<String>>
 
-    @Append(value = Type.FIELD, entry = Entry(name = "q117", value = MyStringProvider5::class))
+    // @Append(type = Type.FIELD, key= "q117", value = MyStringProvider5::class)
     @POST("/test10")
     suspend fun func10(
         @JsonKey("v1") v1: String,
@@ -115,11 +118,60 @@ interface TestKotlin {
         @JsonKey("v3") v3: Float,
     ): NetResult<String>
 
-    @POST("/test10")
+    @Cache(MyPipeline1::class)
+    @POST("/test11")
     fun func11(
         @JsonKey("v1") v1: String,
         @JsonKey("v2") v2: Int,
         @JsonKey("v3") v3: Double,
     ): Flow<NetResult<String>>
+
+
+    @State(MyPipeline4::class)
+    abstract class User1 : OnState<NetResult<Int>?> {
+        @POST("/test13")
+        abstract suspend fun test13(
+            @JsonKey("age") age: Int,
+            @JsonKey("height") height: Float,
+            @Query("name") name: String,
+        ): Flow<NetResult<Int>>
+    }
+
+    @State(MyPipeline2::class)
+    interface User2 : OnState<NetResult<Int>> {
+
+        @POST("/test14")
+        suspend fun test14(
+            @JsonKey("age") age: Int,
+            @JsonKey("height") height: Float,
+            @Query("name") name: String,
+        ): Flow<NetResult<Int>>
+        override fun defaultValue(): NetResult<Int> {
+            return NetResult(code = 4679, data = null, message = "viverra")
+        }
+
+        @POST("/test15")
+        suspend fun test15(
+            @JsonKey("age") age: Int,
+            @JsonKey("height") height: Float,
+            @Query("name") name: String,
+        ): Flow<NetResult<Int>?>
+
+
+//        @POST("/test16")
+//        suspend fun test16(
+//            @JsonKey("age") age: Int,
+//            @JsonKey("height") height: Float,
+//            @Query("name") name: String,
+//        ): Flow<NetResult<String>>
+//
+//        @POST("/test17")
+//        suspend fun test17(
+//            @JsonKey("age") age: Int,
+//            @JsonKey("height") height: Float,
+//            @Query("name") name: String,
+//        ): Flow<NetResult<Float>>
+
+    }
 
 }
