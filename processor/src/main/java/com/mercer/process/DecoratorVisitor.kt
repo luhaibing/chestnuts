@@ -16,12 +16,14 @@ import com.google.devtools.ksp.validate
 import com.mercer.annotate.http.Cache
 import com.mercer.annotate.http.Decorator
 import com.mercer.annotate.http.JsonKey
+import com.mercer.annotate.http.Serialization
 import com.mercer.annotate.http.State
 import com.mercer.core.Strategy.DEFAULT
 import com.mercer.process.mode.AppendRes
 import com.mercer.process.mode.CacheRes
 import com.mercer.process.mode.Named
 import com.mercer.process.mode.PathRes
+import com.mercer.process.mode.SerializerRes
 import com.mercer.process.mode.StateRes
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.AnnotationSpec
@@ -40,6 +42,8 @@ import com.squareup.kotlinpoet.ksp.toClassName
 import com.squareup.kotlinpoet.ksp.toKModifier
 import com.squareup.kotlinpoet.ksp.toTypeName
 import retrofit2.http.Body
+import java.util.ArrayList
+import javax.swing.text.html.HTML.Attribute.N
 
 /**
  * author:  Mercer
@@ -51,6 +55,7 @@ class DecoratorVisitor(
     private val env: SymbolProcessorEnvironment,
     private val resolver: Resolver,
     private val pipelineTypeNames: MutableMap<TypeName, Named>,
+    private val serializerTypeNames: MutableMap<TypeName, Named>,
     private val apiTypeSpec: TypeSpec.Builder,
     private val implTypeSpec: TypeSpec.Builder,
 ) : KSVisitorVoid() {
@@ -79,14 +84,17 @@ class DecoratorVisitor(
                 val cacheRes = it.toCacheRes(resolver)
                 if (cacheRes != null) {
                     val returnTypeTypeName = it.returnType?.toTypeName() ?: UNIT
-                    val rt = (returnTypeTypeName as? ParameterizedTypeName)?.rawType ?: returnTypeTypeName
+                    val rt = (returnTypeTypeName as? ParameterizedTypeName)?.rawType
+                        ?: returnTypeTypeName
                     if (rt != FLOW_CLASS_NAME) {
                         logger.error("${it.qualifiedName?.asString()} : The outermost layer of the return value is not Flow.")
                     }
-                    // rawReturnTypeName
-                    val rawReturnTypeName = (returnTypeTypeName as? ParameterizedTypeName)
-                        ?.typeArguments?.first()?.copy(nullable = true)
-                    if (rawReturnTypeName != cacheRes.pipelineParameterizedTypeName.copy(nullable = true)) {
+                    val rawReturnTypeName =
+                        (returnTypeTypeName as? ParameterizedTypeName)?.typeArguments?.first()
+                            ?.copy(nullable = true)
+                    val pipelineParameterizedTypeName =
+                        cacheRes.pipelineParameterizedTypeName.copy(nullable = true)
+                    if (pipelineParameterizedTypeName != STRING_NULLABLE && pipelineParameterizedTypeName != rawReturnTypeName) {
                         logger.error("${it.qualifiedName?.asString()} : The entity type is inconsistent.")
                     }
                 }
@@ -110,7 +118,8 @@ class DecoratorVisitor(
                     // 必须实现 OnState 接口, 并且有 @State 注解
                     logger.error("${it.qualifiedName?.asString()} : The $ON_STATE_CLASS_NAME interface must be implemented with the @${State::class.qualifiedName} annotation.")
                 }
-                val pipelineParameterizedTypeName = stateRes?.pipelineParameterizedTypeName ?: UNIT
+                val pipelineParameterizedTypeName =
+                    stateRes?.pipelineParameterizedTypeName?.copy(nullable = true) ?: UNIT
                 val returnTypeNames = it.getStateTargetTheReturnValueOfInterfaceFunction()
                 val condition = returnTypeNames.any { t ->
                     val rt = (t as? ParameterizedTypeName)?.rawType ?: t
@@ -128,9 +137,9 @@ class DecoratorVisitor(
                     // 实体类型不一致
                     logger.error("${it.qualifiedName?.asString()} : Function returns entity type inconsistent.")
                 }
-                val rawReturnTypeName = rawReturnTypeNames.firstOrNull() ?: UNIT
-                if (pipelineParameterizedTypeName.copy(nullable = true) != rawReturnTypeName.copy(nullable = true)) {
-                    // 函数返回实体类型和Pipeline参数化类型不一致
+                val rawReturnTypeName =
+                    rawReturnTypeNames.firstOrNull()?.copy(nullable = true) ?: UNIT
+                if (pipelineParameterizedTypeName != STRING_NULLABLE && pipelineParameterizedTypeName != rawReturnTypeName) { // 函数返回实体类型和Pipeline参数化类型不一致
                     logger.error("${it.qualifiedName?.asString()} : The entity type returned by the function does not match the Pipeline parameterized type.")
                 }
             }
@@ -167,6 +176,27 @@ class DecoratorVisitor(
             pipelineTypeNames[it] = named
             names.add(named)
         }
+
+        // 统计所有的 Serializer,并分配名字
+        (arrayListOf(
+            classDeclaration.getAnnotation(Serialization::class)
+                ?.toTypeName { value } to Named.NAME_GLOBAL_SERIALIZER
+        ) + absFunctions.map {
+            it.getAnnotation(Serialization::class)
+                ?.toTypeName { value } to Named.NAME_FUNCTION_SERIALIZER
+        }).asSequence().filter {
+            it.first != null
+        }.filter {
+            it.first!! !in serializerTypeNames.keys
+        }.forEach {
+            val (className, flag) = it
+            className ?: return
+            val name = Named.produce(names, "serializer")
+            val named = Named(name, Named.TYPE_PROPERTY or flag)
+            serializerTypeNames[className] = named
+            names.add(named)
+        }
+
         // 实现接口/继承超类
         if (classDeclaration.classKind == ClassKind.INTERFACE) {
             implTypeSpec.addSuperinterface(classDeclaration.toClassName())
@@ -183,17 +213,18 @@ class DecoratorVisitor(
         }
         sharedClasses.forEach {
             val innerImplTypeSpec = TypeSpec.classBuilder(it.implName).addModifiers(KModifier.INNER)
-            val pipelineTypeName = it.getAnnotation(State::class)!!.toTypeName { value }
+            // val pipelineTypeName = it.getAnnotation(State::class)!!.toTypeName { value }
+            val (pipelineTypeName, pipelineParameterizedTypeName) = it.toStateRes(resolver)!!
 
-            innerImplTypeSpec.addProperty(
-                PropertySpec.builder("pipeline", pipelineTypeName)
-                    .apply {
-                        val named = pipelineTypeNames[pipelineTypeName]!!
-                        initializer("%N", named.value)
-                    }
-                    .addModifiers(KModifier.OVERRIDE)
-                    .build()
-            )
+//            innerImplTypeSpec.addProperty(
+//                PropertySpec.builder("pipeline", pipelineTypeName)
+//                    .apply {
+//                        val named = pipelineTypeNames[pipelineTypeName]!!
+//                        initializer("%N", named.value)
+//                    }
+//                    .addModifiers(KModifier.OVERRIDE)
+//                    .build()
+//            )
 
             // 类型参数
             val typeParameter = it.getTypeParameterOf(ON_STATE_CLASS_NAME)!!
@@ -202,12 +233,12 @@ class DecoratorVisitor(
             val defaultValueFunc = it.getDeclaredFunctions().find { f ->
                 f.simpleName.asString() == ON_STATE_DEFAULT_VALUE_FUNCTION
             }
-            val valueTypeName = typeParameter.copy(nullable = true)
+            val entityTypeName = typeParameter.copy(nullable = true)
             innerImplTypeSpec.addProperty(
                 PropertySpec
                     .builder(
                         ON_STATE_INNER_CURRENT_FLOW,
-                        MUTABLE_STATE_FLOW_CLASS_NAME.parameterizedBy(valueTypeName)
+                        MUTABLE_STATE_FLOW_CLASS_NAME.parameterizedBy(entityTypeName)
                     )
                     .addModifiers(KModifier.PRIVATE)
                     .apply {
@@ -224,7 +255,7 @@ class DecoratorVisitor(
             )
             innerImplTypeSpec.addProperty(
                 PropertySpec
-                    .builder("currentFlow", STATE_FLOW_CLASS_NAME.parameterizedBy(valueTypeName))
+                    .builder("currentFlow", STATE_FLOW_CLASS_NAME.parameterizedBy(entityTypeName))
                     .initializer(ON_STATE_INNER_CURRENT_FLOW)
                     .addModifiers(KModifier.OVERRIDE)
                     .build()
@@ -245,17 +276,79 @@ class DecoratorVisitor(
                     .build()
             )
 
+            val serializerRes = it.toSerializerRes(resolver, logger)
             innerImplTypeSpec.addInitializerBlock(
                 buildCodeBlock {
+                    /*
                     beginControlFlow("onCreator.scope.%M", LAUNCH_FUNCTION_NAME)
-                    addStatement("val value = pipeline.read(path)")
+                    val named = pipelineTypeNames[pipelineTypeName]!!
+                    addStatement("val value = %N.read(path)",named.value)
                     beginControlFlow("value?.let")
                     addStatement("%N.value = it", ON_STATE_INNER_CURRENT_FLOW)
                     endControlFlow()
                     endControlFlow()
+                    */
+                    val named = pipelineTypeNames[pipelineTypeName]!!
+                    beginControlFlow("onCreator.scope.%M{", LAUNCH_FUNCTION_NAME)
+                    addStatement( "%N.read(path)?.%M {", named.value, LET_FUNCTION_NAME)
+                    if (serializerRes != null && pipelineParameterizedTypeName.copy(nullable = true) == STRING_NULLABLE) {
+                        val serializerNamed = serializerTypeNames[serializerRes.typeName]!!
+                        val type = serializerRes.type
+                        when (type) {
+                            SerializerRes.TYPE_GSON -> {
+                                if (entityTypeName is ParameterizedTypeName) {
+                                    addStatement(
+                                        "val type = object : %T<%T>() {}.type",
+                                        TYPE_TOKEN_CLASS_NAME,
+                                        entityTypeName
+                                    )
+                                } else {
+                                    addStatement(
+                                        "val type = %T::class.java",
+                                        entityTypeName
+                                    )
+                                }
+                                addStatement(
+                                    "%N.deserialize<%T>(it, type)",
+                                    serializerNamed.value,
+                                    entityTypeName
+                                )
+                            }
+                            SerializerRes.TYPE_MOSHI -> {
+                                val typeNames = arrayListOf<TypeName>()
+                                val builder = StringBuilder()
+                                createMoshiType(entityTypeName, builder, typeNames)
+                                addStatement(
+                                    "val type = $builder",
+                                    *typeNames.toTypedArray()
+                                )
+                                addStatement(
+                                    "%N.deserialize<%T>(it, type)",
+                                    serializerNamed.value,
+                                    entityTypeName
+                                )
+                            }
+                            else -> {
+                            }
+                        }
+                    }
+                    addStatement("}?.let{")
+                    addStatement("%N.value = it", ON_STATE_INNER_CURRENT_FLOW)
+                    addStatement("}")
+
+                    endControlFlow()
                 }
             )
-            it.accept(DecoratorVisitor(env, resolver, pipelineTypeNames, apiTypeSpec, innerImplTypeSpec))
+            it.accept(
+                DecoratorVisitor(
+                    env,
+                    resolver,
+                    pipelineTypeNames,
+                    serializerTypeNames,
+                    apiTypeSpec,
+                    innerImplTypeSpec
+                )
+            )
             implTypeSpec.addType(innerImplTypeSpec.build())
         }
     }
@@ -444,6 +537,8 @@ class DecoratorVisitor(
             cacheRes = null
             stateRes = parentDeclaration?.toStateRes(resolver)
         }
+        val serializerRes = toSerializerRes(resolver, logger)
+        // logger.warn("serializerRes : $serializerRes")
         return FunSpec.builder(simpleName.asString())
             .addModifiers(modifiers)
             .addModifiers(KModifier.OVERRIDE)
@@ -499,20 +594,118 @@ class DecoratorVisitor(
                 when (returnRawType) {
                     FLOW_CLASS_NAME -> {
                         if (cacheRes != null) {
-                            val (pipelineTypeName, _, strategy) = cacheRes
+                            val (pipelineTypeName, pipelineParameterizedTypeName, strategy) = cacheRes
                             val pn = ns.find { it.flag intersect Named.NAME_PATH }!!
-                            val named = pipelineTypeNames[pipelineTypeName]!!
+                            val pipelineNamed = pipelineTypeNames[pipelineTypeName]!!
                             addStatement(
                                 "return %M({",
                                 if (strategy == DEFAULT) DEFAULT_CACHE_USE_STRATEGY else SELECT_CACHE_USE_STRATEGY
                             )
                             addStatement("api.%N(%L)", apiFunc, args)
                             addStatement("}, {")
-                            addStatement("%N.read(%N)", named.value, pn.value)
+
+                            val returnEntityTypeName = if (returnType is ParameterizedTypeName) {
+                                returnType.typeArguments.first()
+                            } else {
+                                returnType
+                            }
+
+                            if (serializerRes != null && pipelineParameterizedTypeName.copy(nullable = true) == STRING_NULLABLE) {
+                                addStatement(
+                                    "val json = %N.read(%N)",
+                                    pipelineNamed.value,
+                                    pn.value
+                                )
+                                val serializerNamed = serializerTypeNames[serializerRes.typeName]!!
+                                val type = serializerRes.type
+                                when (type) {
+                                    SerializerRes.TYPE_GSON -> {
+                                        if (returnEntityTypeName is ParameterizedTypeName) {
+                                            addStatement(
+                                                "val type = object : %T<%T>() {}.type",
+                                                TYPE_TOKEN_CLASS_NAME,
+                                                returnEntityTypeName
+                                            )
+                                        } else {
+                                            addStatement(
+                                                "val type = %T::class.java",
+                                                returnEntityTypeName
+                                            )
+                                        }
+                                        addStatement(
+                                            "%N.deserialize<%T>(json, type)",
+                                            serializerNamed.value,
+                                            returnEntityTypeName
+                                        )
+                                    }
+
+                                    SerializerRes.TYPE_MOSHI -> {
+                                        val typeNames = arrayListOf<TypeName>()
+                                        val builder = StringBuilder()
+                                        createMoshiType(returnEntityTypeName, builder, typeNames)
+                                        logger.warn("format : ${"val type = $builder"}")
+                                        addStatement(
+                                            "val type = $builder",
+                                            *typeNames.toTypedArray()
+                                        )
+                                        addStatement(
+                                            "%N.deserialize<%T>(json, type)",
+                                            serializerNamed.value,
+                                            returnEntityTypeName
+                                        )
+                                    }
+
+                                    else -> {
+                                        TODO()
+                                    }
+                                }
+                            } else {
+                                addStatement("%N.read(%N)", pipelineNamed.value, pn.value)
+                            }
+
                             addStatement("}, {")
-                            addStatement("%N.write(%N,it)", named.value, pn.value)
+
+                            if (serializerRes != null && pipelineParameterizedTypeName.copy(nullable = true) == STRING_NULLABLE) {
+                                val type = serializerRes.type
+                                val serializerNamed = serializerTypeNames[serializerRes.typeName]!!
+                                when (type) {
+                                    SerializerRes.TYPE_GSON -> {
+                                        addStatement(
+                                            "val json = %N.serialize(it)",
+                                            serializerNamed.value
+                                        )
+                                        addStatement(
+                                            "%N.write(%N,json)",
+                                            pipelineNamed.value,
+                                            pn.value
+                                        )
+                                    }
+
+                                    SerializerRes.TYPE_MOSHI -> {
+                                        addStatement(
+                                            "val json = %N.serialize(it)",
+                                            serializerNamed.value
+                                        )
+                                        addStatement(
+                                            "%N.write(%N,json)",
+                                            pipelineNamed.value,
+                                            pn.value
+                                        )
+                                    }
+
+                                    else -> {
+                                        TODO()
+                                    }
+                                }
+                            } else {
+                                addStatement("%N.write(%N,it)", pipelineNamed.value, pn.value)
+                            }
+
                             addStatement("})")
                         } else if (stateRes != null) {
+                            val (pipelineTypeName, pipelineParameterizedTypeName) = stateRes
+                            val pipelineNamed = pipelineTypeNames[pipelineTypeName]!!
+
                             beginControlFlow("return %M", FLOW_FUNCTION)
                             addStatement("emit(api.%N(%L))", apiFunc, args)
                             endControlFlow()
@@ -520,7 +713,37 @@ class DecoratorVisitor(
                             addStatement("%N.value = it", ON_STATE_INNER_CURRENT_FLOW)
                             endControlFlow()
                             beginControlFlow(".%M", ON_EACH_FUNCTION)
-                            addStatement("pipeline.write(path, it)")
+
+
+                            if (serializerRes != null && pipelineParameterizedTypeName.copy(nullable = true) == STRING_NULLABLE) {
+                                val type = serializerRes.type
+                                val serializerNamed = serializerTypeNames[serializerRes.typeName]!!
+                                when (type) {
+                                    SerializerRes.TYPE_GSON -> {
+                                        addStatement(
+                                            "val json = %N.serialize(it)",
+                                            serializerNamed.value
+                                        )
+                                        addStatement("%N.write(path,json)", pipelineNamed.value)
+                                    }
+
+                                    SerializerRes.TYPE_MOSHI -> {
+                                        addStatement(
+                                            "val json = %N.serialize(it)",
+                                            serializerNamed.value
+                                        )
+                                        addStatement("%N.write(path,json)", pipelineNamed.value)
+                                    }
+
+                                    else -> {
+                                        TODO()
+                                    }
+                                }
+                            } else {
+                                addStatement("pipeline.write(path, it)")
+                            }
+
+
                             endControlFlow()
                         } else {
                             beginControlFlow("return %M", FLOW_FUNCTION)
@@ -550,6 +773,27 @@ class DecoratorVisitor(
             .filter { f -> f.validate() && f.isAbstract }
             .filter { f -> f.toPathRes().count() == 1 }
             .map { f -> f.returnType?.toTypeName() ?: UNIT }
+    }
+
+    private fun createMoshiType(
+        value: TypeName,
+        builder: StringBuilder,
+        typeNames: ArrayList<TypeName>
+    ) {
+        if (value is ParameterizedTypeName) {
+            builder.append("%T.newParameterizedType(%T::class.java,")
+            typeNames.add(TYPES_CLASS_NAME)
+            typeNames.add(value.rawType)
+            for (typeArgument in value.typeArguments) {
+                createMoshiType(typeArgument, builder, typeNames)
+                builder.append(",")
+            }
+            builder.setLength(builder.length - 1)
+            builder.append(")")
+        } else {
+            builder.append("%T::class.java")
+            typeNames.add(value)
+        }
     }
 
 }
