@@ -44,11 +44,39 @@ class DecoratorSymbolProcessor(
             }
             .forEach {
                 val packageName = it.packageName.asString()
-                val pipelines = hashMapOf<TypeName, Named>()
+                val pipelineTypeNames = hashMapOf<TypeName, Named>()
+                val serializerTypeNames = hashMapOf<TypeName, Named>()
                 val implTypSpec = TypeSpec.classBuilder(it.implName)
                 val apiTypeSpec = TypeSpec.interfaceBuilder(it.apiName)
-                it.accept(DecoratorVisitor(env, resolver, pipelines, apiTypeSpec, implTypSpec))
-                pipelines.toList().sortedBy { p ->
+                it.accept(
+                    DecoratorVisitor(
+                        env, resolver,
+                        pipelineTypeNames, serializerTypeNames,
+                        apiTypeSpec, implTypSpec
+                    )
+                )
+                pipelineTypeNames.toList().sortedBy { p ->
+                    p.second.value
+                }.onEach { (t, n) ->
+                    implTypSpec.addProperty(
+                        PropertySpec.builder(n.value, t)
+                            .addModifiers(KModifier.PRIVATE)
+                            .apply {
+                                if (t.toClassDeclaration(resolver)!!.classKind == ClassKind.OBJECT) {
+                                    initializer("%T", t)
+                                } else {
+                                    delegate(buildCodeBlock {
+                                        beginControlFlow("lazy")
+                                        addStatement("%T()", t)
+                                        endControlFlow()
+                                    })
+                                }
+                            }
+                            .build()
+                    )
+                }
+
+                serializerTypeNames.toList().sortedBy { p ->
                     p.second.value
                 }.onEach { (t, n) ->
                     implTypSpec.addProperty(

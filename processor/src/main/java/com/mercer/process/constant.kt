@@ -1,8 +1,11 @@
 package com.mercer.process
 
+import com.google.gson.reflect.TypeToken
 import com.mercer.annotate.http.Cache
 import com.mercer.annotate.http.Decorator
 import com.mercer.core.Creator
+import com.mercer.core.GsonSerializer
+import com.mercer.core.MoshiSerializer
 import com.mercer.core.OnState
 import com.mercer.core.Path
 import com.mercer.core.Pipeline
@@ -11,6 +14,7 @@ import com.squareup.kotlinpoet.MemberName
 import com.squareup.kotlinpoet.STRING
 import com.squareup.kotlinpoet.TypeVariableName
 import com.squareup.kotlinpoet.asClassName
+import com.squareup.moshi.Types
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,6 +50,14 @@ val ON_STATE_CLASS_NAME = OnState::class.asClassName()
 
 val PATH_CLASS_NAME = Path::class.asClassName()
 
+val GSON_SERIALIZER_CLASS_NAME = GsonSerializer::class.asClassName()
+
+val MOSHI_SERIALIZER_CLASS_NAME = MoshiSerializer::class.asClassName()
+
+val TYPE_TOKEN_CLASS_NAME = TypeToken::class.asClassName()
+val TYPES_CLASS_NAME = Types::class.asClassName()
+
+
 
 // 协程
 val COROUTINES = arrayOf(FLOW_CLASS_NAME, DEFERRED_CLASS_NAME)
@@ -66,7 +78,7 @@ val ON_EACH_FUNCTION = MemberName("kotlinx.coroutines.flow", "onEach")
 val RUN_BLOCKING_FLOW_FUNCTION = MemberName("kotlinx.coroutines", "runBlocking")
 val SUSPEND_2_DEFERRED_FUNCTION = MemberName("com.mercer.core", "suspend2deferred")
 val LAUNCH_FUNCTION_NAME = MemberName("kotlinx.coroutines","launch")
-val LET_FUNCTION_NAME = MemberName("kotlinx","let")
+val LET_FUNCTION_NAME = MemberName("kotlin","let")
 val DEFAULT_CACHE_USE_STRATEGY = MemberName("com.mercer.core", "defaultCacheUseStrategy")
 val SELECT_CACHE_USE_STRATEGY = MemberName("com.mercer.core", "selectCacheUseStrategy")
 

@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
  *   热流,xx
  */
 interface OnState<T> {
-    val pipeline: Pipeline<T?>
+    // val pipeline: Pipeline<T>
     val currentFlow: StateFlow<T?>
     val current: T?
         get() {

@@ -50,3 +50,14 @@ data class StateRes(
     override val pipelineTypeName: TypeName,
     override val pipelineParameterizedTypeName: TypeName,
 ) : OnPipeline
+
+data class SerializerRes(
+    val typeName: TypeName,
+    val type: Int,
+){
+    companion object{
+        const val TYPE_GSON = 0
+        const val TYPE_MOSHI = 1
+        const val TYPE_KS = 2
+    }
+}

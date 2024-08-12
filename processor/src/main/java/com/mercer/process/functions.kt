@@ -4,9 +4,11 @@ import com.google.devtools.ksp.KSTypeNotPresentException
 import com.google.devtools.ksp.KspExperimental
 import com.google.devtools.ksp.getAnnotationsByType
 import com.google.devtools.ksp.getClassDeclarationByName
+import com.google.devtools.ksp.processing.KSPLogger
 import com.google.devtools.ksp.processing.Resolver
 import com.google.devtools.ksp.symbol.KSAnnotated
 import com.google.devtools.ksp.symbol.KSClassDeclaration
+import com.google.devtools.ksp.symbol.KSDeclaration
 import com.google.devtools.ksp.symbol.KSFunctionDeclaration
 import com.google.devtools.ksp.symbol.KSNode
 import com.google.devtools.ksp.symbol.KSTypeReference
@@ -14,15 +16,19 @@ import com.google.devtools.ksp.symbol.KSVisitor
 import com.mercer.annotate.http.Append
 import com.mercer.annotate.http.Cache
 import com.mercer.annotate.http.JsonKey
+import com.mercer.annotate.http.Serialization
 import com.mercer.annotate.http.State
 import com.mercer.core.Flag
 import com.mercer.core.Flag.FLAG_FORM
 import com.mercer.core.Flag.FLAG_MULTIPART
 import com.mercer.core.Flag.FLAG_NONE
+import com.mercer.core.GsonSerializer
+import com.mercer.core.MoshiSerializer
 import com.mercer.core.Path
 import com.mercer.process.mode.AppendRes
 import com.mercer.process.mode.CacheRes
 import com.mercer.process.mode.PathRes
+import com.mercer.process.mode.SerializerRes
 import com.mercer.process.mode.StateRes
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.AnnotationSpec
@@ -41,6 +47,7 @@ import retrofit2.http.POST
 import retrofit2.http.PUT
 import java.security.MessageDigest
 import java.util.Locale
+import java.util.logging.Logger
 import kotlin.reflect.KClass
 
 /**
@@ -284,8 +291,9 @@ val KSClassDeclaration.implTypeName: TypeName
 fun KSAnnotated.toCacheRes(resolver: Resolver): CacheRes? {
     return getAnnotationsByType(Cache::class).firstOrNull()?.let {
         val pipelineTypeName = it.toTypeName { pipeline }
-        val pipelineParameterizedTypeName = resolver.getClassDeclarationByName(pipelineTypeName.toString())
-            ?.getTypeParameterOf(CACHE_PIPELINE_CLASS_NAME) ?: UNIT
+        val pipelineParameterizedTypeName =
+            resolver.getClassDeclarationByName(pipelineTypeName.toString())
+                ?.getTypeParameterOf(CACHE_PIPELINE_CLASS_NAME) ?: UNIT
         CacheRes(
             pipelineTypeName = pipelineTypeName,
             pipelineParameterizedTypeName = pipelineParameterizedTypeName,
@@ -298,10 +306,12 @@ fun KSAnnotated.toCacheRes(resolver: Resolver): CacheRes? {
 fun KSAnnotated.toStateRes(resolver: Resolver): StateRes? {
     return getAnnotationsByType(State::class).firstOrNull()?.let {
         val pipelineTypeName = it.toTypeName { value }
-        val pipelineParameterizedTypeName = resolver.getClassDeclarationByName(pipelineTypeName.toString())
-            ?.getTypeParameterOf(CACHE_PIPELINE_CLASS_NAME) ?: UNIT
+        val pipelineParameterizedTypeName =
+            resolver.getClassDeclarationByName(pipelineTypeName.toString())
+                ?.getTypeParameterOf(CACHE_PIPELINE_CLASS_NAME) ?: UNIT
         StateRes(
-            pipelineTypeName = pipelineTypeName, pipelineParameterizedTypeName = pipelineParameterizedTypeName
+            pipelineTypeName = pipelineTypeName,
+            pipelineParameterizedTypeName = pipelineParameterizedTypeName
         )
     }
 }
@@ -309,3 +319,54 @@ fun KSAnnotated.toStateRes(resolver: Resolver): StateRes? {
 fun KSNode.accept(visitor: KSVisitor<Unit, Unit>) {
     accept(visitor, Unit)
 }
+
+fun KSDeclaration.toSerializerRes(resolver: Resolver, logger: KSPLogger): SerializerRes? {
+    var current: KSDeclaration? = this
+    var typeName: TypeName?
+    do {
+        typeName = current?.getAnnotation(Serialization::class)?.toTypeName { value }
+        current = current?.parentDeclaration
+    } while (typeName == null && current != null)
+    val gsonSerializer = resolver.getClassDeclarationByName(GSON_SERIALIZER_CLASS_NAME.toString())
+        ?.asType(emptyList())!!
+    val moshiSerializer = resolver.getClassDeclarationByName(MOSHI_SERIALIZER_CLASS_NAME.toString())
+        ?.asType(emptyList())!!
+    return typeName?.let {
+        val ksType = resolver.getClassDeclarationByName(it.toString())!!.asType(emptyList())
+        val type = if (gsonSerializer.isAssignableFrom(ksType)) {
+            SerializerRes.TYPE_GSON
+        } else if (moshiSerializer.isAssignableFrom(ksType)) {
+            SerializerRes.TYPE_MOSHI
+        } else {
+            SerializerRes.TYPE_KS
+        }
+        SerializerRes(typeName, type)
+    }
+}
+
+/*
+// gson
+{
+    val json = pipeline1.read(v5) as String
+    val type = object : TypeToken<NetResult<String>>() {}.type!!
+    val type2 = NetResult::class
+    serializer1.deserialize<NetResult<String>>(json, type)
+}, {
+    val json = serializer1.serialize(it)
+    pipeline1.write(json, it)
+}
+*/
+
+/*
+// moshi
+{
+    val json = pipeline2.read(v4) as String
+    val type = Types.newParameterizedType(NetResult::class.java, String::class.java)
+    val type2 =NetResult::class
+    serializer2.deserialize<NetResult<String>>(json,type)
+    pipeline1.read(v4)
+}, {
+    val json = serializer1.serialize(it)
+    pipeline1.write(v4, json)
+}
+*/

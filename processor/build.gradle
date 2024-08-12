@@ -18,6 +18,9 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     //noinspection DependencyNotationArgument
     compileOnly(libs.retrofit)
+    compileOnly(libs.gson)
+    compileOnly("com.squareup.moshi:moshi:1.15.1")
+    compileOnly("com.squareup.moshi:moshi-adapters:1.15.1")
 }
 
 afterEvaluate {

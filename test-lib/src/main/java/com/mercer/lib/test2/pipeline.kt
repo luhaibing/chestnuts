@@ -49,3 +49,13 @@ class MyPipeline4: Pipeline<NetResult<Int>?> {
         TODO("Not yet implemented")
     }
 }
+
+class MyPipeline5: Pipeline<String> {
+    override suspend fun read(path: Path): String? {
+        TODO("Not yet implemented")
+    }
+
+    override suspend fun write(path: Path, value:String?) {
+        TODO("Not yet implemented")
+    }
+}
