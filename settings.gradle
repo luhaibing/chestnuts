@@ -14,7 +14,7 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "chestnuts"
-// include(":app")
+include(":app")
 include(":core")
 include(":processor")
 include(":test-lib")

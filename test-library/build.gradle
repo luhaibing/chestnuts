@@ -1,15 +1,15 @@
 plugins {
-    alias(libs.plugins.com.android.library)
-    alias(libs.plugins.org.jetbrains.kotlin.android)
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.jetbrains.kotlin.android)
     alias(libs.plugins.com.google.devtools.ksp)
 }
 
 android {
-    namespace 'com.mercer.library'
+    namespace 'com.mercer.test.library'
     compileSdk 34
 
     defaultConfig {
-        minSdk 24
+        minSdk 26
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles "consumer-rules.pro"
@@ -22,24 +22,29 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
     }
     kotlinOptions {
-        jvmTarget = "17"
+        jvmTarget = '1.8'
     }
 }
 
 dependencies {
-    implementation libs.core.ktx
-    implementation libs.appcompat
+
+    implementation libs.androidx.core.ktx
+    implementation libs.androidx.appcompat
     implementation libs.material
     testImplementation libs.junit
-    androidTestImplementation libs.androidx.test.ext.junit
-    androidTestImplementation libs.espresso.core
+    androidTestImplementation libs.androidx.junit
+    androidTestImplementation libs.androidx.espresso.core
 
-    implementation(libs.bundles.retrofit)
-    implementation(libs.kotlinx.coroutines.core)
     implementation(project(":core"))
     ksp(project(":processor"))
+    // kapt(project(":processor"))
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.retrofit2:retrofit:2.11.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
+
 }

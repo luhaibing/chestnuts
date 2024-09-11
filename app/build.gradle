@@ -1,92 +1,47 @@
 plugins {
-    alias(libs.plugins.com.android.application)
-    alias(libs.plugins.org.jetbrains.kotlin.android)
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.jetbrains.kotlin.android)
 }
 
 android {
-    namespace = "com.mercer.chestnuts"
-    compileSdk = 34
+    namespace 'com.mercer.chestnuts'
+    compileSdk 34
 
     defaultConfig {
-        applicationId = "com.mercer.chestnuts"
-        minSdk = 24
-        // noinspection OldTargetApi
-        targetSdk = 33
-        versionCode = 1
-        versionName = "1.0"
+        applicationId "com.mercer.chestnuts"
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        vectorDrawables {
-            useSupportLibrary = true
-        }
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         release {
-            minifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
-
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
     }
     kotlinOptions {
-        jvmTarget = "17"
-    }
-
-    buildFeatures {
-        compose = true
-    }
-
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.4.3"
-    }
-
-    packaging {
-        resources {
-            // noinspection GrDeprecatedAPIUsage
-            excludes += "/META-INF/{AL2.0,LGPL2.1}"
-        }
+        jvmTarget = '1.8'
     }
 }
 
 dependencies {
-    implementation fileTree(dir: "libs", includes: ["*.jar"])
-    implementation fileTree(dir: "libs", includes: ["*.aar"])
-    implementation(libs.core.ktx)
-    implementation(libs.lifecycle.runtime.ktx)
-    implementation(libs.activity.compose)
-    implementation(platform(libs.compose.bom))
-    //noinspection DependencyNotationArgument
-    implementation(libs.ui)
-    implementation(libs.ui.graphics)
-    implementation(libs.ui.tooling.preview)
-    implementation(libs.material3)
-    testImplementation(libs.junit)
-    androidTestImplementation(libs.androidx.test.ext.junit)
-    androidTestImplementation(libs.espresso.core)
-    androidTestImplementation(platform(libs.compose.bom))
-    androidTestImplementation(libs.ui.test.junit4)
 
-    //noinspection DependencyNotationArgument
-    debugImplementation(libs.ui.tooling)
-    debugImplementation(libs.ui.test.manifest)
-
-    /*
-    // https://mvnrepository.com/artifact/androidx.lifecycle/lifecycle-livedata-ktx
-    implementation(libs.lifecycle.livedata.ktx)
-    // https://mvnrepository.com/artifact/androidx.lifecycle/lifecycle-livedata-core-ktx
-    implementation(libs.lifecycle.livedata.core.ktx)
-    // https://mvnrepository.com/artifact/androidx.lifecycle/lifecycle-viewmodel-ktx
-    implementation(libs.lifecycle.viewmodel.ktx)
-    // https://mvnrepository.com/artifact/androidx.lifecycle/lifecycle-viewmodel-savedstate
-    implementation(libs.lifecycle.viewmodel.savedstate)
-    */
-
-
+    implementation libs.androidx.core.ktx
+    implementation libs.androidx.appcompat
+    implementation libs.material
+    implementation libs.androidx.activity
+    implementation libs.androidx.constraintlayout
+    testImplementation libs.junit
+    androidTestImplementation libs.androidx.junit
+    androidTestImplementation libs.androidx.espresso.core
+    implementation(project(':test-lib'))
+    implementation(project(':test-library'))
 }

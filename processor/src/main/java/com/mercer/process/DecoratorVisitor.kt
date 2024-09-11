@@ -375,7 +375,12 @@ class DecoratorVisitor(
     private fun KSFunctionDeclaration.generateApiFunction(appends: List<AppendRes>): FunSpec {
         val parameterSpecs = mutableListOf<ParameterSpec>()
         val returnType = returnType?.toTypeName() ?: UNIT
+        val kModifiers = modifiers.mapNotNull {
+            it.toKModifier()
+        }.toMutableList()
+        kModifiers.add(KModifier.ABSTRACT)
         val apiReturnType = if ((returnType as? ParameterizedTypeName)?.rawType in COROUTINES) {
+            kModifiers.add(KModifier.SUSPEND)
             (returnType as ParameterizedTypeName).typeArguments.first()
         } else {
             returnType
@@ -411,7 +416,7 @@ class DecoratorVisitor(
         }
         return FunSpec
             .builder(arrayOf(simpleName.asString(), signature.md5).joinToString("_"))
-            .addModifiers(KModifier.ABSTRACT, KModifier.SUSPEND)
+            .addModifiers(kModifiers)
             .addAnnotations(toAnnotationSpecs(RETROFIT))
             .addKdoc(signature)
             .returns(apiReturnType)
@@ -425,8 +430,12 @@ class DecoratorVisitor(
     private fun KSFunctionDeclaration.generateImplFunction(
         appends: List<AppendRes>, pathRes: PathRes, apiFunc: String,
     ): FunSpec {
-        val modifiers =
-            modifiers.mapNotNull { m -> m.toKModifier() }.filter { it != KModifier.ABSTRACT }
+        val kModifiers = modifiers.mapNotNull {
+            it.toKModifier()
+        }.filter {
+            it != KModifier.ABSTRACT
+        }.toMutableList()
+        kModifiers.add(KModifier.OVERRIDE)
         val returnType = returnType?.toTypeName() ?: UNIT
         val ns = arrayListOf<Named>()
         ns.addAll(parameters.mapNotNull { p ->
@@ -445,8 +454,7 @@ class DecoratorVisitor(
             stateRes = parentDeclaration?.toStateRes(resolver)
         }
         return FunSpec.builder(simpleName.asString())
-            .addModifiers(modifiers)
-            .addModifiers(KModifier.OVERRIDE)
+            .addModifiers(kModifiers)
             .returns(returnType)
             .addParameters(parameters.mapNotNull { p ->
                 val name = p.name?.asString() ?: return@mapNotNull null
