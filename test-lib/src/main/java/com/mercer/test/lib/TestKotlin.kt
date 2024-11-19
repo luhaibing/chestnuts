@@ -24,13 +24,15 @@ import retrofit2.http.QueryName
  * desc:
  *   接口1
  */
+@Temp
 @Append(type = Type.QUERY, key = "q118", value = MyProvider1::class)
 @Decorator(SimpleCreator::class)
 interface TestKotlin {
 
+    @Temp
     @GET("/test1")
     fun func1(
-        @QueryName(encoded = false) v111: String,
+        @Temp @QueryName(encoded = false) v111: String,
         @QueryName(encoded = true) v222: String,
     ): Deferred<NetResult<Person>>
 

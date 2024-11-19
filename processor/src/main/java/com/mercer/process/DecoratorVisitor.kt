@@ -53,6 +53,7 @@ class DecoratorVisitor(
 
     override fun visitClassDeclaration(classDeclaration: KSClassDeclaration, data: Unit) {
         super.visitClassDeclaration(classDeclaration, data)
+        apiTypeSpec.addAnnotations(classDeclaration.toAnnotationSpecs(CORE_ANNOTATIONS_EXCLUDE))
         // 构造函数私有化
         implTypeSpec.primaryConstructor(
             FunSpec.constructorBuilder().addModifiers(KModifier.PRIVATE).build()
@@ -230,7 +231,7 @@ class DecoratorVisitor(
             val pType: TypeName = p.type.toTypeName()
             val pName = "v${i + 1}"
             ParameterSpec.builder(pName, pType)
-                .addAnnotations(p.toAnnotationSpecs(RETROFIT))
+                .addAnnotations(p.toAnnotationSpecs(CORE_ANNOTATIONS_EXCLUDE))
                 .build()
         }.onEach {
             ns.add(Named(it.name, Named.TYPE_VARIABLE))
@@ -255,7 +256,7 @@ class DecoratorVisitor(
         return FunSpec
             .builder(arrayOf(simpleName.asString(), signature.md5).joinToString("_"))
             .addModifiers(kModifiers)
-            .addAnnotations(toAnnotationSpecs(RETROFIT))
+            .addAnnotations(toAnnotationSpecs(CORE_ANNOTATIONS_EXCLUDE))
             .addKdoc(signature)
             .returns(apiReturnType)
             .addParameters(parameterSpecs.asIterable())
