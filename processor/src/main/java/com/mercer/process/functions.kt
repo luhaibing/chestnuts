@@ -214,6 +214,13 @@ val hasRetrofit: KSAnnotated.() -> Boolean = {
 }
 
 /**
+ * 排除部分自定义注解
+ */
+val CORE_ANNOTATIONS_EXCLUDE: (TypeName) -> Boolean = {
+    it !in CORE_ANNOTATIONS
+}
+
+/**
  * 节点转注解
  */
 fun KSAnnotated.toAnnotationSpecs(predicate: (TypeName) -> Boolean = { true }): List<AnnotationSpec> {
