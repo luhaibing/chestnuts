@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="error_parse_failed">解析错误</string>
+    <string name="error_certificate_validation_failed">证书验证失败</string>
+    <string name="error_connection_timeout">连接超时</string>
+    <string name="error_network_is_unavailable">当前网络不可用</string>
+    <string name="error_network_connection_error">网络连接错误[%s]</string>
+    <string name="error_parameter_incorrect">参数异常</string>
+</resources>
