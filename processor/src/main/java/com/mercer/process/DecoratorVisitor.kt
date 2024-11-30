@@ -11,28 +11,35 @@ import com.google.devtools.ksp.symbol.KSPropertyDeclaration
 import com.google.devtools.ksp.symbol.KSVisitorVoid
 import com.google.devtools.ksp.symbol.Modifier
 import com.google.devtools.ksp.validate
+import com.mercer.annotate.http.CacheKey
 import com.mercer.annotate.http.Decorator
 import com.mercer.annotate.http.JsonKey
+import com.mercer.core.Converter
 import com.mercer.process.mode.AppendRes
 import com.mercer.process.mode.Named
 import com.mercer.process.mode.PathRes
+import com.mercer.process.mode.SerializationRes
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
 import com.squareup.kotlinpoet.ParameterSpec
 import com.squareup.kotlinpoet.ParameterizedTypeName
+import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.PropertySpec
 import com.squareup.kotlinpoet.STRING
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.TypeSpec
+import com.squareup.kotlinpoet.TypeVariableName
 import com.squareup.kotlinpoet.UNIT
+import com.squareup.kotlinpoet.asClassName
 import com.squareup.kotlinpoet.buildCodeBlock
 import com.squareup.kotlinpoet.ksp.toClassName
 import com.squareup.kotlinpoet.ksp.toKModifier
 import com.squareup.kotlinpoet.ksp.toTypeName
 import retrofit2.http.Body
 import retrofit2.http.Path
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * author:  Mercer
@@ -48,22 +55,22 @@ class DecoratorVisitor(
 ) : KSVisitorVoid() {
 
     private val logger: KSPLogger = env.logger
-    private val names = arrayListOf<Named>()
-    private val topAppends: MutableList<AppendRes> = arrayListOf()
+    private val memberNames = arrayListOf<Named>()
+    private val memberAppends: MutableList<AppendRes> = arrayListOf()
+    private var memberSerializationType: SerializationRes? = null
 
     override fun visitClassDeclaration(classDeclaration: KSClassDeclaration, data: Unit) {
         super.visitClassDeclaration(classDeclaration, data)
         apiTypeSpec.addAnnotations(classDeclaration.toAnnotationSpecs(CORE_ANNOTATIONS_EXCLUDE))
         // 构造函数私有化
-        implTypeSpec.primaryConstructor(
-            FunSpec.constructorBuilder().addModifiers(KModifier.PRIVATE).build()
-        )
+        implTypeSpec.primaryConstructor(FunSpec.constructorBuilder().addModifiers(KModifier.PRIVATE).build())
         // 抽象方法
         val absFunctions = classDeclaration.getDeclaredFunctions()
             .filter { it.validate() && it.isAbstract }
             .onEach { f ->
                 if (f.toPathRes().count() != 1) {
-                    logger.error("${f.qualifiedName?.asString()} must have one of [PUT, DELETE, POST, GET] annotations.")
+                    // logger.error("${f.qualifiedName?.asString()} must have one of [PUT, DELETE, POST, GET] annotations.")
+                    throw IllegalArgumentException("${f.qualifiedName?.asString()} must have one of [PUT, DELETE, POST, GET] annotations.")
                 }
             }
             .toList()
@@ -73,7 +80,7 @@ class DecoratorVisitor(
         }
 
         // 顶层的追加参数
-        topAppends.addAll(classDeclaration.toAppends(resolver))
+        memberAppends.addAll(classDeclaration.toAppends(resolver))
 
         // 记录所有属性和方法的名字
         classDeclaration.declarations.forEach { d ->
@@ -82,7 +89,7 @@ class DecoratorVisitor(
                 is KSPropertyDeclaration -> Named(d.simpleName.asString(), Named.TYPE_PROPERTY)
                 else -> null
             }?.let {
-                names.add(it)
+                memberNames.add(it)
             }
         }
 
@@ -97,6 +104,7 @@ class DecoratorVisitor(
             implTypeSpec.addTypes(classDeclaration.generateImplObjects())
             implTypeSpec.addProperties(classDeclaration.generateImplProperties())
         }
+        memberSerializationType = classDeclaration.toSerializationRes(resolver)
         absFunctions.forEach {
             visitFunctionDeclaration(it, Unit)
         }
@@ -153,6 +161,8 @@ class DecoratorVisitor(
             }
             */
             val typeName = getAnnotation(Decorator::class)!!.toTypeName { value }
+            // 判断是否有无参构造/条件
+            typeName.requireConstructor(resolver)
             add(
                 PropertySpec.builder("onCreator", CREATOR_CLASS_NAME)
                     .addModifiers(KModifier.PRIVATE)
@@ -178,15 +188,32 @@ class DecoratorVisitor(
                     })
                     .build()
             )
-            names.add(Named("onCreator", Named.TYPE_VARIABLE))
-            names.add(Named("api", Named.TYPE_VARIABLE))
+            memberNames.add(Named("onCreator", Named.TYPE_VARIABLE))
+            memberNames.add(Named("api", Named.TYPE_VARIABLE))
+
+
+            val concurrentHashMapTypeName = ConcurrentHashMap::class.asClassName().parameterizedBy(
+                STRING,
+                Converter.Factory::class.asClassName().parameterizedBy(TypeVariableName.invoke("*"))
+            )
+            add(
+                PropertySpec.builder(
+                    "converters", concurrentHashMapTypeName
+                )
+                    .addModifiers(KModifier.PRIVATE)
+                    .delegate(buildCodeBlock {
+                        beginControlFlow("lazy")
+                        addStatement("%T()", concurrentHashMapTypeName)
+                        endControlFlow()
+                    })
+                    .build()
+            )
+            memberNames.add(Named("converters", Named.TYPE_VARIABLE))
         }
     }
 
     override fun visitFunctionDeclaration(function: KSFunctionDeclaration, data: Unit) {
         super.visitFunctionDeclaration(function, data)
-        val fNames = arrayListOf<Named>()
-        fNames.addAll(names)
         val pathRes = function.toPathRes().first()
         val appends = arrayListOf<AppendRes>().apply {
             for (res in function.toAppends(resolver).toList().reversed()) {
@@ -196,7 +223,7 @@ class DecoratorVisitor(
                 if (res.flags.any { pathRes.flag intersect it }.not()) continue
                 add(res)
             }
-            for (res in topAppends.reversed()) {
+            for (res in memberAppends.reversed()) {
                 val uniques = map { it.unique }
                 val unique = res.unique
                 if (unique in uniques) continue
@@ -226,7 +253,7 @@ class DecoratorVisitor(
         }
         kModifiers.add(KModifier.ABSTRACT)
         kModifiers.addAll(modifiers.mapNotNull(Modifier::toKModifier))
-        val ns = arrayListOf<Named>()
+        val parameterNames = arrayListOf<Named>()
         parameterSpecs.addAll(parameters.filter(hasRetrofit).mapIndexed { i, p ->
             val pType: TypeName = p.type.toTypeName()
             val pName = "v${i + 1}"
@@ -234,16 +261,16 @@ class DecoratorVisitor(
                 .addAnnotations(p.toAnnotationSpecs(CORE_ANNOTATIONS_EXCLUDE))
                 .build()
         }.onEach {
-            ns.add(Named(it.name, Named.TYPE_VARIABLE))
+            parameterNames.add(Named(it.name, Named.TYPE_VARIABLE))
         })
         if (parameters.any(hasJsonKey)) {
-            val name = Named.produce(ns, "v")
-            ns.add(Named(name, Named.TYPE_VARIABLE))
+            val name = Named.produce(parameterNames, "v")
+            parameterNames.add(Named(name, Named.TYPE_VARIABLE))
             parameterSpecs.add(ParameterSpec.builder(name, ANY).addAnnotation(Body::class).build())
         }
         for (res in appends) {
-            val name = Named.produce(ns, "v")
-            ns.add(Named(name, Named.TYPE_VARIABLE))
+            val name = Named.produce(parameterNames, "v")
+            parameterNames.add(Named(name, Named.TYPE_VARIABLE))
             parameterSpecs.add(
                 ParameterSpec.builder(name, res.returnTypeName)
                     .addAnnotation(
@@ -268,27 +295,38 @@ class DecoratorVisitor(
      */
     private fun KSFunctionDeclaration.generateImplFunction(appends: List<AppendRes>, pathRes: PathRes, apiFunc: String): FunSpec {
         val modifiers = modifiers.mapNotNull { m -> m.toKModifier() }.filter { it != KModifier.ABSTRACT }
-        val returnType = returnType?.toTypeName() ?: UNIT
-        val ns = arrayListOf<Named>()
-        ns.addAll(parameters.mapNotNull { p ->
+        val returnTypeName = returnType?.toTypeName() ?: UNIT
+        val returnRawTypeName = returnTypeName.rawType
+        val returnApiTypeName =
+            if (returnRawTypeName in COROUTINES) (returnTypeName as ParameterizedTypeName).typeArguments.first() else returnTypeName
+        val names = arrayListOf<Named>()
+        names.addAll(parameters.mapNotNull { p ->
             val f = if (p.hasAnnotation(RETROFIT)) Named.TYPE_PARAMETER else Named.TYPE_TEMPORARY
             val value = p.name?.asString() ?: return@mapNotNull null
             Named(value, f)
         })
+
         val jsonKeyParameters = parameters.filter(hasJsonKey)
         val pathParameters = parameters.filter(hasPath)
+        val cacheKeyParameters = parameters.filter(hasCacheKey)
+
+        val serializationTypeName = toSerializationRes(resolver) ?: memberSerializationType
+        val persistenceTypeName = toPersistenceRes(resolver)
+        if (persistenceTypeName != null && serializationTypeName == null) {
+            throw IllegalStateException("If @Persistence is used, the current method or parent node needs to have @Serialization.")
+        }
         return FunSpec.builder(simpleName.asString())
             .addModifiers(modifiers)
             .addModifiers(KModifier.OVERRIDE)
-            .returns(returnType)
+            .returns(returnTypeName)
             .addParameters(parameters.mapNotNull { p ->
                 val name = p.name?.asString() ?: return@mapNotNull null
                 ParameterSpec(name, p.type.toTypeName())
             })
             .apply {
                 if (jsonKeyParameters.isNotEmpty()) {
-                    val n = Named.produce(ns, "v")
-                    ns.add(Named(n, Named.TYPE_VARIABLE or Named.NAME_BODY))
+                    val n = Named.produce(names, "v")
+                    names.add(Named(n, Named.TYPE_VARIABLE or Named.NAME_BODY))
                     addComment("wrap data that is passed using json.")
                     addStatement("val %N = hashMapOf<%T, %T>()", n, STRING, ANY_NULLABLE)
                     for (parameter in jsonKeyParameters) {
@@ -298,7 +336,20 @@ class DecoratorVisitor(
                         addStatement("%N[%S] = %N", n, k, v)
                     }
                 }
-                if (appends.isNotEmpty()) {
+                // 持久化条件
+                val persistenceCondition = persistenceTypeName != null
+                if (persistenceCondition) {
+                    val n = Named.produce(names, "v")
+                    names.add(Named(n, Named.TYPE_TEMPORARY or Named.NAME_CACHE_KEYS))
+                    addStatement("val %N = %T()", n, CACHE_KEYS_CLASS_NAME)
+                    for (parameter in cacheKeyParameters) {
+                        val k = parameter.getAnnotation(CacheKey::class)?.value ?: continue
+                        val v = parameter.name?.asString() ?: continue
+                        addStatement("%N[%S] = %N", n, k, v)
+                    }
+                }
+                val appendCondition = appends.isNotEmpty()
+                if (appendCondition || persistenceCondition) {
                     val s = pathParameters.fold(pathRes.value) { v1, v2 ->
                         val k = v2.getAnnotation(Path::class)?.value
                         val v = v2.name?.asString()
@@ -308,23 +359,42 @@ class DecoratorVisitor(
                             v1.replace("{$k}", "\$$v")
                         }
                     }
-                    val n = Named.produce(ns, "v")
-                    ns.add(Named(n, Named.TYPE_TEMPORARY or Named.NAME_PATH))
+                    val n = Named.produce(names, "v")
+                    names.add(Named(n, Named.TYPE_TEMPORARY or Named.NAME_PATH))
                     addStatement("val %N = %T(\"%L\")", n, pathRes.typeName, s)
                 }
                 for (res in appends) {
-                    val n = Named.produce(ns, "v")
-                    ns.add(Named(n, Named.TYPE_VARIABLE))
-                    val pn = ns.find { it.flag intersect Named.NAME_PATH } ?: continue
+                    val n = Named.produce(names, "v")
+                    names.add(Named(n, Named.TYPE_VARIABLE))
+                    val pn = names.find { it.flag intersect Named.NAME_PATH } ?: continue
                     val providerTypeName = res.providerTypeName
                     val value = pn.value
                     val key = res.key
-                    addStatement("val %N = %T().provide(%N,%S)", n, providerTypeName, value, key)
+                    addStatement(
+                        "val %N = %T${if (providerTypeName.isObject) "" else "()"}.provide(%N,%S)", n, providerTypeName.value, value, key
+                    )
+                }
+                if (persistenceCondition && serializationTypeName != null && persistenceTypeName != null) {
+                    if (returnRawTypeName in COROUTINES) {
+                        val cn = Named.produce(names, "v")
+                        names.add(Named(cn, Named.TYPE_TEMPORARY or Named.NAME_CONVERTER))
+                        addStatement(
+                            "val %N = converters.getOrPut(%S) { \n %T<%T>(%M<%T>()) \n} as %T<%T> ",
+                            cn, apiFunc,
+                            serializationTypeName.value, returnApiTypeName, TYPE_OF_NAME, returnApiTypeName,
+                            serializationTypeName.value, returnApiTypeName
+                        )
+                        val pn = Named.produce(names, "v")
+                        names.add(Named(pn, Named.TYPE_TEMPORARY or Named.NAME_PERSISTENCER))
+                        // TODO: 未使用缓存
+                        val condition = persistenceTypeName.persistence.classKind == ClassKind.OBJECT
+                        addStatement("val %N = %T${if (condition) "" else "()"}", pn, persistenceTypeName.persistence.value)
+                    }
                 }
             }
             .addCode(buildCodeBlock {
                 val args = buildString {
-                    val values = ns.filter {
+                    val values = names.filter {
                         it.flag intersect Named.TYPE_PARAMETER || it.flag intersect Named.TYPE_VARIABLE
                     }
                     for (index in values.indices) {
@@ -335,34 +405,50 @@ class DecoratorVisitor(
                         }
                     }
                 }
-                val returnRawType = if (returnType is ParameterizedTypeName) {
-                    returnType.rawType
-                } else {
-                    returnType
-                }
-                val apiReturnType = if ((returnType as? ParameterizedTypeName)?.rawType in COROUTINES) {
-                    (returnType as ParameterizedTypeName).typeArguments.first()
-                } else {
-                    returnType
-                }
-                val resultName = Named.produce(ns, "v")
+                val resultName = Named.produce(names, "v")
                 // 获取response
                 val responseCodeBlock = buildCodeBlock {
-                    ns.add(Named(resultName, Named.TYPE_TEMPORARY))
-                    addStatement("val %N : %T = api.%N(%L)", resultName, apiReturnType, apiFunc, args)
+                    names.add(Named(resultName, Named.TYPE_TEMPORARY))
+                    addStatement("val %N : %T = api.%N(%L)", resultName, returnApiTypeName, apiFunc, args)
                 }
-                when (returnRawType) {
+                when (returnRawTypeName) {
                     FLOW_CLASS_NAME -> {
-                        beginControlFlow("return %M", FLOW_FUNCTION)
-                        add(responseCodeBlock)
-                        addStatement("emit(%N)", resultName)
-                        endControlFlow()
+                        if (persistenceTypeName != null) {
+                            val pathName = names.find { it.flag intersect Named.NAME_PATH }?.value
+                            val cacheKeysName = names.find { it.flag intersect Named.NAME_CACHE_KEYS }?.value
+                            val converterName = names.find { it.flag intersect Named.NAME_CONVERTER }?.value
+                            val persistenceName = names.find { it.flag intersect Named.NAME_PERSISTENCER }?.value
+                            val en = Named.produce(names, "v")
+                            names.add(Named(en, Named.TYPE_TEMPORARY))
+                            add(buildCodeBlock {
+                                beginControlFlow("val %N: suspend () -> %T = ", en, returnApiTypeName)
+                                addStatement("api.%N(%L)", apiFunc, args)
+                                endControlFlow()
+                            })
+                            val dispatchTypeName = persistenceTypeName.dispatcher.value
+                            val condition = persistenceTypeName.dispatcher.classKind == ClassKind.OBJECT
+                            addStatement(
+                                "return %T${if (condition) "" else "()"}(%N, %N, %N, execute = %N, source = %N::source, sink = %N::sink)",
+                                dispatchTypeName,
+                                pathName,
+                                cacheKeysName,
+                                converterName,
+                                en,
+                                persistenceName,
+                                persistenceName
+                            )
+                        } else {
+                            beginControlFlow("return %M", FLOW_FUNCTION)
+                            add(responseCodeBlock)
+                            addStatement("emit(%N)", resultName)
+                            endControlFlow()
+                        }
                     }
 
                     DEFERRED_CLASS_NAME -> {
-                        val deferredName = Named.produce(ns, "v")
-                        ns.add(Named(deferredName, Named.TYPE_TEMPORARY))
-                        addStatement("val %N = %T<%T>()", deferredName, COMPLETABLE_DEFERRED_CLASS_NAME, apiReturnType)
+                        val deferredName = Named.produce(names, "v")
+                        names.add(Named(deferredName, Named.TYPE_TEMPORARY))
+                        addStatement("val %N = %T<%T>()", deferredName, COMPLETABLE_DEFERRED_CLASS_NAME, returnApiTypeName)
                         beginControlFlow("%M", RUN_BLOCKING_FLOW_FUNCTION)
                         add(responseCodeBlock)
                         addStatement("%N.complete(%N)", deferredName, resultName)

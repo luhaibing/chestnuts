@@ -37,6 +37,12 @@ data class Named(
 
         const val NAME_FLOW = NAME_SCOPE shl 1
 
+        const val NAME_CACHE_KEYS = NAME_FLOW shl 1
+
+        const val NAME_CONVERTER = NAME_CACHE_KEYS shl 1
+
+        const val NAME_PERSISTENCER = NAME_CONVERTER shl 1
+
         fun produceName(excludes: List<String>, namePrefix: String = "v"): String {
             var position = 1
             while (true) {

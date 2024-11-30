@@ -6,43 +6,43 @@ import com.mercer.core.Provider
 
 abstract class Mock
 
-class MyStringProvider : Mock(), Provider {
+class MyStringProvider : Mock(), Provider<Any> {
     override fun provide(path: Path, key: String): Any? {
         TODO("Not yet implemented")
     }
 }
 
-class MyIntProvider : Provider {
+class MyIntProvider : Provider<Any> {
     override fun provide(path: Path, key: String): Any? {
         TODO("Not yet implemented")
     }
 }
 
-class MyStringProvider1 : Provider {
+class MyStringProvider1 : Provider<Any> {
     override fun provide(path: Path, key: String): Any? {
         TODO("Not yet implemented")
     }
 }
 
-class MyStringProvider2 : Provider {
+class MyStringProvider2 : Provider<Any> {
     override fun provide(path: Path, key: String): Any? {
         TODO("Not yet implemented")
     }
 }
 
-class MyStringProvider3 : Provider {
+class MyStringProvider3 : Provider<Any> {
     override fun provide(path: Path, key: String): Any? {
         TODO("Not yet implemented")
     }
 }
 
-class MyStringProvider4 : Provider {
+class MyStringProvider4 : Provider<Any> {
     override fun provide(path: Path, key: String): Any? {
         TODO("Not yet implemented")
     }
 }
 
-class MyStringProvider5 : Provider {
+class MyStringProvider5 : Provider<Any> {
     override fun provide(path: Path, key: String): Any? {
         TODO("Not yet implemented")
     }

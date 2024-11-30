@@ -2,28 +2,40 @@ package com.mercer.process
 
 import com.google.devtools.ksp.KSTypeNotPresentException
 import com.google.devtools.ksp.KspExperimental
+import com.google.devtools.ksp.getAllSuperTypes
 import com.google.devtools.ksp.getAnnotationsByType
 import com.google.devtools.ksp.getClassDeclarationByName
+import com.google.devtools.ksp.getConstructors
 import com.google.devtools.ksp.processing.Resolver
 import com.google.devtools.ksp.symbol.KSAnnotated
 import com.google.devtools.ksp.symbol.KSClassDeclaration
 import com.google.devtools.ksp.symbol.KSFunctionDeclaration
 import com.google.devtools.ksp.symbol.KSNode
 import com.google.devtools.ksp.symbol.KSTypeReference
+import com.google.devtools.ksp.symbol.KSValueParameter
 import com.google.devtools.ksp.symbol.KSVisitor
 import com.mercer.annotate.http.Append
+import com.mercer.annotate.http.CacheKey
 import com.mercer.annotate.http.JsonKey
+import com.mercer.annotate.http.Persistence
+import com.mercer.annotate.http.Serialization
 import com.mercer.core.Flag
 import com.mercer.core.Flag.FLAG_FORM
 import com.mercer.core.Flag.FLAG_MULTIPART
 import com.mercer.core.Flag.FLAG_NONE
 import com.mercer.core.Path
+import com.mercer.core.Provider
 import com.mercer.process.mode.AppendRes
 import com.mercer.process.mode.PathRes
-import com.squareup.kotlinpoet.ANY
+import com.mercer.process.mode.PersistenceRes
+import com.mercer.process.mode.SerializationRes
+import com.mercer.process.mode.TypeNameSnapshot
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ClassName
+import com.squareup.kotlinpoet.DelicateKotlinPoetApi
+import com.squareup.kotlinpoet.ParameterizedTypeName
 import com.squareup.kotlinpoet.TypeName
+import com.squareup.kotlinpoet.asClassName
 import com.squareup.kotlinpoet.asTypeName
 import com.squareup.kotlinpoet.ksp.toAnnotationSpec
 import com.squareup.kotlinpoet.ksp.toClassName
@@ -37,6 +49,7 @@ import retrofit2.http.PUT
 import java.security.MessageDigest
 import java.util.Locale
 import kotlin.reflect.KClass
+import kotlin.reflect.KType
 
 /**
  * author:  Mercer
@@ -80,13 +93,6 @@ private fun KSTypeReference?.typeName(): String {
  */
 val KSFunctionDeclaration.signature: String
     get() {
-        /*
-        val parameters = parameters.joinToString(",") { p ->
-            // arrayOf(p.type.typeName(), p.name!!.asString()).joinToString(":")
-            p.type.typeName()
-        }
-        return "${qualifiedName!!.asString()}(${parameters}):${returnType.typeName()}"
-        */
         val parameters = parameters.joinToString(",") { it.type.typeName() }
         return "${qualifiedName!!.asString()}(${parameters})"
     }
@@ -112,10 +118,10 @@ fun <T : Annotation> KSAnnotated.getAnnotations(value: KClass<T>): Sequence<T> {
  * 获取注解中的类型的值
  */
 @OptIn(KspExperimental::class)
-fun <T : Annotation> T.toTypeName(block: T.() -> Any): ClassName {
+fun <T : Annotation> T.toTypeName(block: T.() -> KClass<*>): ClassName {
     return try {
-        block()
-        throw Exception()
+        val value = block()
+        return value.asTypeName()
     } catch (e: KSTypeNotPresentException) {
         e.ksType.toClassName()
     }
@@ -133,7 +139,8 @@ infix fun Int.intersect(value: Int): Boolean {
  * @receiver     节点
  * @param target 类型
  */
-fun KSClassDeclaration.isSubClassOf(target: ClassName): Boolean {
+fun KSClassDeclaration.isSubClassOf(target: TypeName): Boolean {
+    /*
     for (superType in superTypes) {
         val ksType = superType.resolve()
         val toClassName = ksType.toClassName()
@@ -141,6 +148,13 @@ fun KSClassDeclaration.isSubClassOf(target: ClassName): Boolean {
             target -> return true
             ANY -> false
             else -> (ksType.declaration as KSClassDeclaration).isSubClassOf(target)
+        }
+    }
+    */
+    for (ksType in getAllSuperTypes()) {
+        val value = ksType.toClassName()
+        if (value == target) {
+            return true
         }
     }
     return false
@@ -153,6 +167,7 @@ fun KSClassDeclaration.isSubClassOf(target: ClassName): Boolean {
  * @param position  位置
  */
 fun KSClassDeclaration.getTypeParameterOf(target: ClassName, position: Int = 0): TypeName? {
+    /*
     for (superType in superTypes) {
         val ksType = superType.resolve()
         val toClassName = ksType.toClassName()
@@ -160,6 +175,13 @@ fun KSClassDeclaration.getTypeParameterOf(target: ClassName, position: Int = 0):
             target -> ksType.arguments[position].type?.resolve()?.toTypeName()
             ANY -> null
             else -> (ksType.declaration as KSClassDeclaration).getTypeParameterOf(target, position)
+        }
+    }
+    */
+    for (ksType in getAllSuperTypes()) {
+        val value = ksType.toClassName()
+        if (value == target) {
+            return (ksType.declaration as KSClassDeclaration).getTypeParameterOf(target, position)
         }
     }
     return null
@@ -196,6 +218,15 @@ val hasJsonKey: KSAnnotated.() -> Boolean = {
 val hasPath: KSAnnotated.() -> Boolean = {
     hasAnnotation {
         it.toString() == retrofit2.http.Path::class.java.canonicalName
+    }
+}
+
+/**
+ * 是否有 JsonKey 注解
+ */
+val hasCacheKey: KSAnnotated.() -> Boolean = {
+    hasAnnotation {
+        it.toString() == CacheKey::class.java.canonicalName
     }
 }
 
@@ -251,26 +282,42 @@ fun KSFunctionDeclaration.toPathRes(): Sequence<PathRes> {
     }
 }
 
-@OptIn(KspExperimental::class)
+@OptIn(KspExperimental::class, DelicateKotlinPoetApi::class)
 fun KSAnnotated.toAppends(resolver: Resolver): Sequence<AppendRes> {
-    return getAnnotationsByType(Append::class).map {
+    return getAnnotationsByType(Append::class).mapNotNull {
         val key = it.key
         val type = it.type
         val annotation = type.annotation
         val providerTypeName = it.toTypeName { value }
-        val returnTypeName = providerTypeName.toClassDeclaration(resolver)!!.declarations
-            .filterIsInstance<KSFunctionDeclaration>()
-            .find { f ->
-                f.simpleName.asString() == PROVIDER_PROVIDE_FUNCTION
-            }!!.returnType!!.toTypeName()
+        providerTypeName.requireConstructor(resolver)
+        val providerClassDeclaration = providerTypeName.toClassDeclaration(resolver) ?: return@mapNotNull null
+        val returnTypeName = providerClassDeclaration.getTypeParameterOf(Provider::class.java.asClassName(), 0) ?: return@mapNotNull null
         AppendRes(
             annotation = annotation,
             key = key,
-            providerTypeName = providerTypeName,
-            returnTypeName = returnTypeName,
+            providerTypeName = TypeNameSnapshot(providerTypeName, providerClassDeclaration.classKind),
+            returnTypeName = returnTypeName.copy(nullable = true),
             flags = type.flags.toList()
         )
     }
+}
+
+fun KSAnnotated.toSerializationRes(resolver: Resolver): SerializationRes? {
+    val typeName = getAnnotation(Serialization::class)?.toTypeName { value } ?: return null
+    val classKind = typeName.toClassDeclaration(resolver)?.classKind ?: return null
+    typeName.requireConstructor(resolver,KType::class.asTypeName())
+    return SerializationRes(typeName, classKind)
+}
+
+fun KSAnnotated.toPersistenceRes(resolver: Resolver): PersistenceRes? {
+    val annotation = getAnnotation(Persistence::class) ?: return null
+    val persistenceTypeName = annotation.toTypeName { value }
+    val dispatcherTypeName = annotation.toTypeName { dispatcher }
+    val persistenceClassKind = persistenceTypeName.toClassDeclaration(resolver)?.classKind ?: return null
+    val dispatcherClassKind = dispatcherTypeName.toClassDeclaration(resolver)?.classKind ?: return null
+    persistenceTypeName.requireConstructor(resolver)
+    dispatcherTypeName.requireConstructor(resolver)
+    return PersistenceRes(TypeNameSnapshot(persistenceTypeName, persistenceClassKind), TypeNameSnapshot(dispatcherTypeName, dispatcherClassKind))
 }
 
 val KSClassDeclaration.apiName: String
@@ -292,4 +339,46 @@ val KSClassDeclaration.implTypeName: TypeName
 
 fun KSNode.accept(visitor: KSVisitor<Unit, Unit>) {
     accept(visitor, Unit)
+}
+
+val TypeName.rawType: TypeName
+    get() {
+        return (this as? ParameterizedTypeName)?.rawType ?: this
+    }
+
+val TypeName.typeArguments: List<TypeName>?
+    get() {
+        return (this as? ParameterizedTypeName)?.typeArguments
+    }
+
+fun TypeName.requireConstructor(resolver: Resolver, vararg typeNames: TypeName) {
+    val parameterTypeNames = typeNames.toList()
+    val classDeclaration = toClassDeclaration(resolver) ?: return
+    val constructors = classDeclaration.getConstructors()
+    val predicate: (KSFunctionDeclaration) -> Boolean = predicate@{
+        val ps = it.parameters.map(::toTypeName)
+        if (ps.size != parameterTypeNames.size) {
+            return@predicate false
+        }
+        for (index in ps.indices) {
+            val v1 = ps[index]
+            val v2 = parameterTypeNames[index]
+            if (v1 == v2) {
+                continue
+            }
+            val ksClassDeclaration = v2.toClassDeclaration(resolver) ?: continue
+            if (ksClassDeclaration.isSubClassOf(v1)) {
+                continue
+            }
+            return@predicate false
+        }
+        true
+    }
+    if (constructors.any(predicate).not()) {
+        throw IllegalArgumentException("$this requires constructor(${parameterTypeNames.joinToString(", ")}).")
+    }
+}
+
+fun toTypeName(value: KSValueParameter): TypeName {
+    return value.type.resolve().toTypeName()
 }

@@ -1,8 +1,10 @@
 package com.mercer.process
 
 import com.mercer.annotate.http.Append
-import com.mercer.annotate.http.JsonKey
+import com.mercer.annotate.http.CacheKey
 import com.mercer.annotate.http.Decorator
+import com.mercer.annotate.http.JsonKey
+import com.mercer.core.CacheKeys
 import com.mercer.core.Creator
 import com.mercer.core.Path
 import com.squareup.kotlinpoet.ANY
@@ -42,6 +44,8 @@ val CREATOR_CLASS_NAME = Creator::class.asClassName()
 
 val PATH_CLASS_NAME = Path::class.asClassName()
 
+val CACHE_KEY_CLASS_NAME = CacheKey::class.asClassName()
+val CACHE_KEYS_CLASS_NAME = CacheKeys::class.asClassName()
 
 // 协程
 val COROUTINES = arrayOf(FLOW_CLASS_NAME, DEFERRED_CLASS_NAME)
@@ -66,7 +70,7 @@ val RUN_BLOCKING_FLOW_FUNCTION = MemberName("kotlinx.coroutines", "runBlocking")
 val SUSPEND_2_DEFERRED_FUNCTION = MemberName("com.mercer.core", "suspend2deferred")
 val LAUNCH_FUNCTION_NAME = MemberName("kotlinx.coroutines", "launch")
 val LET_FUNCTION_NAME = MemberName("kotlinx", "let")
-
+val TYPE_OF_NAME = MemberName("kotlin.reflect", "typeOf")
 
 /**
  * 常量
@@ -79,4 +83,4 @@ val PROVIDER_PROVIDE_FUNCTION = "provide"
 val ON_STATE_INNER_CURRENT_FLOW = "_currentFlow"
 
 // 排除
-val CORE_ANNOTATIONS = arrayOf(DECORATOR_CLASS_NAME, JsonKey::class.asClassName(), Append::class.asClassName())
+val CORE_ANNOTATIONS = arrayOf(DECORATOR_CLASS_NAME, JsonKey::class.asClassName(), Append::class.asClassName(), CACHE_KEY_CLASS_NAME)

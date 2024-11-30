@@ -16,5 +16,5 @@ import kotlin.reflect.KClass
 annotation class Append(
     val type: Type,
     val key: String,
-    val value: KClass<out Provider>,
+    val value: KClass<out Provider<*>>,
 )

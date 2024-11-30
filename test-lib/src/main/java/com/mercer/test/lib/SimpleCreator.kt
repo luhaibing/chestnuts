@@ -23,7 +23,7 @@ class SimpleCreator : Creator {
     private val retrofit by lazy {
         Retrofit
             .Builder()
-            .baseUrl("https://example.com")
+            .baseUrl("https://devapi.qweather.com")
             .addConverterFactory(GsonConverterFactory.create())
             .client(
                 OkHttpClient.Builder()

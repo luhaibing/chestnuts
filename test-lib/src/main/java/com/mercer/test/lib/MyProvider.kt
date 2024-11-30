@@ -9,18 +9,18 @@ import com.mercer.core.Provider
  * @Description:
  *   追加参数提供
  */
-class MyProvider1 : Provider {
-    override fun provide(path: Path, key: String): Any? {
+class MyProvider1 : Provider<Int> {
+    override fun provide(path: Path, key: String): Int? {
         TODO("Not yet implemented")
     }
 }
-class MyProvider2 : Provider {
-    override fun provide(path: Path, key: String): Any? {
+object MyProvider2 : Provider<Boolean> {
+    override fun provide(path: Path, key: String): Boolean? {
         TODO("Not yet implemented")
     }
 }
-class MyProvider4 : Provider {
-    override fun provide(path: Path, key: String): Any? {
+class MyProvider4 : Provider<String> {
+    override fun provide(path: Path, key: String): String? {
         TODO("Not yet implemented")
     }
 }

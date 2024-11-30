@@ -8,6 +8,9 @@ package com.mercer.core
  */
 // 简单模式 Simpleness
 // 复杂模式 Completeness
-interface Provider {
-    fun provide(path: Path, key: String): Any?
+interface Provider<T : Any> {
+    /**
+     * 返回的数据传输之前的序列化(T->String),由Retrofit框架处理
+     */
+    fun provide(path: Path, key: String): T?
 }
