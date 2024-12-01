@@ -57,8 +57,8 @@ interface WeatherApi {
     @Persistence(value = MyPersistence2::class, dispatcher = SelectPersistenceDispatcher::class)
     @GET("v7/weather/now")
     fun now4(
-        @CacheKey("location") @Query("location") location: String,
-        @CacheKey("id") @Query("key") key: String,
+        @CacheKey("location") @Query("location") api: String,
+        @CacheKey("id") @Query("key") converters: String,
     ): Flow<Response<Now>>
 
     companion object {

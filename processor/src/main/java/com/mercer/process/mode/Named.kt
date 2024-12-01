@@ -26,22 +26,20 @@ data class Named(
         // 方法内的变量名(非临时变量名/参与调用api方法)
         const val TYPE_VARIABLE = TYPE_TEMPORARY shl 1
 
-
+        // retrofit2.http.Body
         const val NAME_BODY = TYPE_VARIABLE shl 1
 
+        // retrofit2.http.Path
         const val NAME_PATH = NAME_BODY shl 1
 
-        const val NAME_PIPELINE = NAME_PATH shl 1
+        // 保存 用于缓存的key
+        const val NAME_CACHE_KEYS = NAME_PATH shl 1
 
-        const val NAME_SCOPE = NAME_PIPELINE shl 1
-
-        const val NAME_FLOW = NAME_SCOPE shl 1
-
-        const val NAME_CACHE_KEYS = NAME_FLOW shl 1
-
+        // 序列换转换器
         const val NAME_CONVERTER = NAME_CACHE_KEYS shl 1
 
-        const val NAME_PERSISTENCER = NAME_CONVERTER shl 1
+        // 持久化具体实现
+        const val NAME_PERSISTENCE = NAME_CONVERTER shl 1
 
         fun produceName(excludes: List<String>, namePrefix: String = "v"): String {
             var position = 1

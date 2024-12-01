@@ -29,7 +29,7 @@ class DecoratorSymbolProcessor(
 
     override fun process(resolver: Resolver): List<KSAnnotated> {
         // 查找所有 Decorator 注解的节点,
-        resolver.getSymbolsWithAnnotation(DECORATOR_CLASS_NAME.toString())
+        resolver.getSymbolsWithAnnotation(Core.DECORATOR_CLASS_NAME.toString())
             .filterIsInstance<KSClassDeclaration>()
             .filter {
                 it.validate()

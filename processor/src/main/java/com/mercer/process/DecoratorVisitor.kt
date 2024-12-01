@@ -14,7 +14,19 @@ import com.google.devtools.ksp.validate
 import com.mercer.annotate.http.CacheKey
 import com.mercer.annotate.http.Decorator
 import com.mercer.annotate.http.JsonKey
-import com.mercer.core.Converter
+import com.mercer.process.Core.CACHE_KEYS_CLASS_NAME
+import com.mercer.process.Core.CREATOR_CLASS_NAME
+import com.mercer.process.Coroutines.COMPLETABLE_DEFERRED_CLASS_NAME
+import com.mercer.process.Coroutines.COROUTINES
+import com.mercer.process.Coroutines.DEFERRED_CLASS_NAME
+import com.mercer.process.Coroutines.FLOW_CLASS_NAME
+import com.mercer.process.Coroutines.FLOW_FUNCTION
+import com.mercer.process.Coroutines.RUN_BLOCKING_FLOW_FUNCTION
+import com.mercer.process.Kotlin.ANY_NULLABLE
+import com.mercer.process.Kotlin.TYPE_OF_NAME
+import com.mercer.process.Variable.API_NAME
+import com.mercer.process.Variable.CONVERTERS_NAME
+import com.mercer.process.Variable.CREATOR_NAME
 import com.mercer.process.mode.AppendRes
 import com.mercer.process.mode.Named
 import com.mercer.process.mode.PathRes
@@ -25,21 +37,17 @@ import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
 import com.squareup.kotlinpoet.ParameterSpec
 import com.squareup.kotlinpoet.ParameterizedTypeName
-import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.PropertySpec
 import com.squareup.kotlinpoet.STRING
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.TypeSpec
-import com.squareup.kotlinpoet.TypeVariableName
 import com.squareup.kotlinpoet.UNIT
-import com.squareup.kotlinpoet.asClassName
 import com.squareup.kotlinpoet.buildCodeBlock
 import com.squareup.kotlinpoet.ksp.toClassName
 import com.squareup.kotlinpoet.ksp.toKModifier
 import com.squareup.kotlinpoet.ksp.toTypeName
 import retrofit2.http.Body
 import retrofit2.http.Path
-import java.util.concurrent.ConcurrentHashMap
 
 /**
  * author:  Mercer
@@ -164,7 +172,7 @@ class DecoratorVisitor(
             // 判断是否有无参构造/条件
             typeName.requireConstructor(resolver)
             add(
-                PropertySpec.builder("onCreator", CREATOR_CLASS_NAME)
+                PropertySpec.builder(CREATOR_NAME, CREATOR_CLASS_NAME)
                     .addModifiers(KModifier.PRIVATE)
                     .delegate(buildCodeBlock {
                         beginControlFlow("lazy")
@@ -179,7 +187,7 @@ class DecoratorVisitor(
             }
             */
             add(
-                PropertySpec.builder("api", apiTypeName)
+                PropertySpec.builder(API_NAME, apiTypeName)
                     .addModifiers(KModifier.PRIVATE)
                     .delegate(buildCodeBlock {
                         beginControlFlow("lazy")
@@ -188,27 +196,20 @@ class DecoratorVisitor(
                     })
                     .build()
             )
-            memberNames.add(Named("onCreator", Named.TYPE_VARIABLE))
-            memberNames.add(Named("api", Named.TYPE_VARIABLE))
+            memberNames.add(Named(CREATOR_NAME, Named.TYPE_VARIABLE))
+            memberNames.add(Named(API_NAME, Named.TYPE_VARIABLE))
 
-
-            val concurrentHashMapTypeName = ConcurrentHashMap::class.asClassName().parameterizedBy(
-                STRING,
-                Converter.Factory::class.asClassName().parameterizedBy(TypeVariableName.invoke("*"))
-            )
             add(
-                PropertySpec.builder(
-                    "converters", concurrentHashMapTypeName
-                )
+                PropertySpec.builder(Variable.CONVERTERS_NAME, Kotlin.CONVERTER_FACTORY_NAME)
                     .addModifiers(KModifier.PRIVATE)
                     .delegate(buildCodeBlock {
                         beginControlFlow("lazy")
-                        addStatement("%T()", concurrentHashMapTypeName)
+                        addStatement("%T()", Kotlin.CONVERTER_FACTORY_NAME)
                         endControlFlow()
                     })
                     .build()
             )
-            memberNames.add(Named("converters", Named.TYPE_VARIABLE))
+            memberNames.add(Named(Variable.CONVERTERS_NAME, Named.TYPE_VARIABLE))
         }
     }
 
@@ -378,14 +379,15 @@ class DecoratorVisitor(
                     if (returnRawTypeName in COROUTINES) {
                         val cn = Named.produce(names, "v")
                         names.add(Named(cn, Named.TYPE_TEMPORARY or Named.NAME_CONVERTER))
+                        val vn = if (names.any { it.value == CONVERTERS_NAME }) "this.${CONVERTERS_NAME}" else CONVERTERS_NAME
                         addStatement(
-                            "val %N = converters.getOrPut(%S) { \n %T<%T>(%M<%T>()) \n} as %T<%T> ",
+                            "val %N = $vn.getOrPut(%S) { \n %T<%T>(%M<%T>()) \n} as %T<%T> ",
                             cn, apiFunc,
                             serializationTypeName.value, returnApiTypeName, TYPE_OF_NAME, returnApiTypeName,
                             serializationTypeName.value, returnApiTypeName
                         )
                         val pn = Named.produce(names, "v")
-                        names.add(Named(pn, Named.TYPE_TEMPORARY or Named.NAME_PERSISTENCER))
+                        names.add(Named(pn, Named.TYPE_TEMPORARY or Named.NAME_PERSISTENCE))
                         // TODO: 未使用缓存
                         val condition = persistenceTypeName.persistence.classKind == ClassKind.OBJECT
                         addStatement("val %N = %T${if (condition) "" else "()"}", pn, persistenceTypeName.persistence.value)
@@ -409,7 +411,8 @@ class DecoratorVisitor(
                 // 获取response
                 val responseCodeBlock = buildCodeBlock {
                     names.add(Named(resultName, Named.TYPE_TEMPORARY))
-                    addStatement("val %N : %T = api.%N(%L)", resultName, returnApiTypeName, apiFunc, args)
+                    val vn = if (names.any { it.value == API_NAME }) "this.${API_NAME}" else API_NAME
+                    addStatement("val %N : %T = ${vn}.%N(%L)", resultName, returnApiTypeName, apiFunc, args)
                 }
                 when (returnRawTypeName) {
                     FLOW_CLASS_NAME -> {
@@ -417,12 +420,13 @@ class DecoratorVisitor(
                             val pathName = names.find { it.flag intersect Named.NAME_PATH }?.value
                             val cacheKeysName = names.find { it.flag intersect Named.NAME_CACHE_KEYS }?.value
                             val converterName = names.find { it.flag intersect Named.NAME_CONVERTER }?.value
-                            val persistenceName = names.find { it.flag intersect Named.NAME_PERSISTENCER }?.value
+                            val persistenceName = names.find { it.flag intersect Named.NAME_PERSISTENCE }?.value
                             val en = Named.produce(names, "v")
                             names.add(Named(en, Named.TYPE_TEMPORARY))
                             add(buildCodeBlock {
                                 beginControlFlow("val %N: suspend () -> %T = ", en, returnApiTypeName)
-                                addStatement("api.%N(%L)", apiFunc, args)
+                                val vn = if (names.any { it.value == API_NAME }) "this.${API_NAME}" else API_NAME
+                                addStatement("${vn}.%N(%L)", apiFunc, args)
                                 endControlFlow()
                             })
                             val dispatchTypeName = persistenceTypeName.dispatcher.value

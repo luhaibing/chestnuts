@@ -25,6 +25,9 @@ import com.mercer.core.Flag.FLAG_MULTIPART
 import com.mercer.core.Flag.FLAG_NONE
 import com.mercer.core.Path
 import com.mercer.core.Provider
+import com.mercer.process.Core.CORE_ANNOTATIONS
+import com.mercer.process.Core.PROVIDER_NAME
+import com.mercer.process.Retrofit.RETROFIT2_HTTP_PACKAGE
 import com.mercer.process.mode.AppendRes
 import com.mercer.process.mode.PathRes
 import com.mercer.process.mode.PersistenceRes
@@ -265,33 +268,31 @@ fun KSAnnotated.toAnnotationSpecs(predicate: (TypeName) -> Boolean = { true }): 
 /**
  * 获取方法的 请求类型
  */
-@OptIn(KspExperimental::class)
 fun KSFunctionDeclaration.toPathRes(): Sequence<PathRes> {
     val f = arrayOf(
         if (getAnnotation(FormUrlEncoded::class) != null) FLAG_FORM else FLAG_NONE,
         if (getAnnotation(Multipart::class) != null) FLAG_MULTIPART else FLAG_NONE,
     ).sum()
-    return getAnnotationsByType(PUT::class).map {
+    return getAnnotations(PUT::class).map {
         PathRes(Path.PUT::class, it.value, Flag.FLAG_PUT or f)
-    } + getAnnotationsByType(DELETE::class).map {
+    } + getAnnotations(DELETE::class).map {
         PathRes(Path.DELETE::class, it.value, Flag.FLAG_DELETE or f)
-    } + getAnnotationsByType(POST::class).map {
+    } + getAnnotations(POST::class).map {
         PathRes(Path.POST::class, it.value, Flag.FLAG_POST or f)
-    } + getAnnotationsByType(GET::class).map {
+    } + getAnnotations(GET::class).map {
         PathRes(Path.GET::class, it.value, Flag.FLAG_GET or f)
     }
 }
 
-@OptIn(KspExperimental::class, DelicateKotlinPoetApi::class)
 fun KSAnnotated.toAppends(resolver: Resolver): Sequence<AppendRes> {
-    return getAnnotationsByType(Append::class).mapNotNull {
+    return getAnnotations(Append::class).mapNotNull {
         val key = it.key
         val type = it.type
         val annotation = type.annotation
         val providerTypeName = it.toTypeName { value }
         providerTypeName.requireConstructor(resolver)
         val providerClassDeclaration = providerTypeName.toClassDeclaration(resolver) ?: return@mapNotNull null
-        val returnTypeName = providerClassDeclaration.getTypeParameterOf(Provider::class.java.asClassName(), 0) ?: return@mapNotNull null
+        val returnTypeName = providerClassDeclaration.getTypeParameterOf(PROVIDER_NAME, 0) ?: return@mapNotNull null
         AppendRes(
             annotation = annotation,
             key = key,
@@ -305,7 +306,7 @@ fun KSAnnotated.toAppends(resolver: Resolver): Sequence<AppendRes> {
 fun KSAnnotated.toSerializationRes(resolver: Resolver): SerializationRes? {
     val typeName = getAnnotation(Serialization::class)?.toTypeName { value } ?: return null
     val classKind = typeName.toClassDeclaration(resolver)?.classKind ?: return null
-    typeName.requireConstructor(resolver,KType::class.asTypeName())
+    typeName.requireConstructor(resolver, KType::class.asTypeName())
     return SerializationRes(typeName, classKind)
 }
 
@@ -346,17 +347,15 @@ val TypeName.rawType: TypeName
         return (this as? ParameterizedTypeName)?.rawType ?: this
     }
 
-val TypeName.typeArguments: List<TypeName>?
-    get() {
-        return (this as? ParameterizedTypeName)?.typeArguments
-    }
-
 fun TypeName.requireConstructor(resolver: Resolver, vararg typeNames: TypeName) {
     val parameterTypeNames = typeNames.toList()
     val classDeclaration = toClassDeclaration(resolver) ?: return
     val constructors = classDeclaration.getConstructors()
+    val toTypeName: (KSValueParameter) -> TypeName = { value ->
+        value.type.resolve().toTypeName()
+    }
     val predicate: (KSFunctionDeclaration) -> Boolean = predicate@{
-        val ps = it.parameters.map(::toTypeName)
+        val ps = it.parameters.map(toTypeName)
         if (ps.size != parameterTypeNames.size) {
             return@predicate false
         }
@@ -377,8 +376,4 @@ fun TypeName.requireConstructor(resolver: Resolver, vararg typeNames: TypeName) 
     if (constructors.any(predicate).not()) {
         throw IllegalArgumentException("$this requires constructor(${parameterTypeNames.joinToString(", ")}).")
     }
-}
-
-fun toTypeName(value: KSValueParameter): TypeName {
-    return value.type.resolve().toTypeName()
 }
