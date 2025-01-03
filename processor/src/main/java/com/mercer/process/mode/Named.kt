@@ -38,8 +38,12 @@ data class Named(
         // 序列换转换器
         const val NAME_CONVERTER = NAME_CACHE_KEYS shl 1
 
+        // 序列换转换器的值
+        const val NAME_CONVERTER_DEFAULT_VALUE_FUNC = NAME_CONVERTER shl 1
+
         // 持久化具体实现
-        const val NAME_PERSISTENCE = NAME_CONVERTER shl 1
+        const val NAME_PERSISTENCE = NAME_CONVERTER_DEFAULT_VALUE_FUNC shl 1
+        // 持久化具体实现
 
         fun produceName(excludes: List<String>, namePrefix: String = "v"): String {
             var position = 1

@@ -200,7 +200,7 @@ class DecoratorVisitor(
             memberNames.add(Named(API_NAME, Named.TYPE_VARIABLE))
 
             add(
-                PropertySpec.builder(Variable.CONVERTERS_NAME, Kotlin.CONVERTER_FACTORY_NAME)
+                PropertySpec.builder(CONVERTERS_NAME, Kotlin.CONVERTER_FACTORY_NAME)
                     .addModifiers(KModifier.PRIVATE)
                     .delegate(buildCodeBlock {
                         beginControlFlow("lazy")
@@ -209,7 +209,7 @@ class DecoratorVisitor(
                     })
                     .build()
             )
-            memberNames.add(Named(Variable.CONVERTERS_NAME, Named.TYPE_VARIABLE))
+            memberNames.add(Named(CONVERTERS_NAME, Named.TYPE_VARIABLE))
         }
     }
 
@@ -377,17 +377,19 @@ class DecoratorVisitor(
                 }
                 if (persistenceCondition && serializationTypeName != null && persistenceTypeName != null) {
                     if (returnRawTypeName in COROUTINES) {
+                        val dcfn = Named.produce(names, "v")
+                        names.add(Named(dcfn, Named.TYPE_TEMPORARY or Named.NAME_CONVERTER_DEFAULT_VALUE_FUNC))
+                        beginControlFlow("val %N = ",dcfn)
+                        addStatement("%T<%T>(%M<%T>())", serializationTypeName.value, returnApiTypeName, TYPE_OF_NAME, returnApiTypeName)
+                        endControlFlow()
+
                         val cn = Named.produce(names, "v")
                         names.add(Named(cn, Named.TYPE_TEMPORARY or Named.NAME_CONVERTER))
                         val vn = if (names.any { it.value == CONVERTERS_NAME }) "this.${CONVERTERS_NAME}" else CONVERTERS_NAME
-                        addStatement(
-                            "val %N = $vn.getOrPut(%S) { \n %T<%T>(%M<%T>()) \n} as %T<%T> ",
-                            cn, apiFunc,
-                            serializationTypeName.value, returnApiTypeName, TYPE_OF_NAME, returnApiTypeName,
-                            serializationTypeName.value, returnApiTypeName
-                        )
+                        addStatement( "val %N = $vn.getOrPut(%S,%N) as %T<%T>", cn, apiFunc,dcfn, serializationTypeName.value, returnApiTypeName)
                         val pn = Named.produce(names, "v")
                         names.add(Named(pn, Named.TYPE_TEMPORARY or Named.NAME_PERSISTENCE))
+
                         // TODO: 未使用缓存
                         val condition = persistenceTypeName.persistence.classKind == ClassKind.OBJECT
                         addStatement("val %N = %T${if (condition) "" else "()"}", pn, persistenceTypeName.persistence.value)
@@ -432,7 +434,7 @@ class DecoratorVisitor(
                             val dispatchTypeName = persistenceTypeName.dispatcher.value
                             val condition = persistenceTypeName.dispatcher.classKind == ClassKind.OBJECT
                             addStatement(
-                                "return %T${if (condition) "" else "()"}(%N, %N, %N, execute = %N, source = %N::source, sink = %N::sink)",
+                                "return %T${if (condition) "" else "()"}.invoke(%N, %N, %N, execute = %N, source = %N::source, sink = %N::sink)",
                                 dispatchTypeName,
                                 pathName,
                                 cacheKeysName,
