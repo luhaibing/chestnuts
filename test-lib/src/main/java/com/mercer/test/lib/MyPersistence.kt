@@ -12,7 +12,7 @@ import com.mercer.core.Serializer
  * @Description:
  *   持久化
  */
-class MyPersistence : OnPersistence {
+object MyPersistence : OnPersistence {
 
     override suspend fun <T : Any?> source(path: Path, cacheKeys: CacheKeys, deserializer: Deserializer<T>): T? {
         val json =

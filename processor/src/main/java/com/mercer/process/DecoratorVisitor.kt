@@ -377,6 +377,8 @@ class DecoratorVisitor(
                 }
                 if (persistenceCondition && serializationTypeName != null && persistenceTypeName != null) {
                     if (returnRawTypeName in COROUTINES) {
+
+                        /*
                         val cn = Named.produce(names, "v")
                         names.add(Named(cn, Named.TYPE_TEMPORARY or Named.NAME_CONVERTER))
                         val vn = if (names.any { it.value == CONVERTERS_NAME }) "this.${CONVERTERS_NAME}" else CONVERTERS_NAME
@@ -391,6 +393,36 @@ class DecoratorVisitor(
                         // TODO: 未使用缓存
                         val condition = persistenceTypeName.persistence.classKind == ClassKind.OBJECT
                         addStatement("val %N = %T${if (condition) "" else "()"}", pn, persistenceTypeName.persistence.value)
+                        */
+
+
+                        val cndvfunc = Named.produce(names, "v")
+                        names.add(Named(cndvfunc, Named.TYPE_TEMPORARY or Named.NAME_CONVERTER_DEFAULT_VALUE_FUNC))
+                        beginControlFlow("val %N = ",cndvfunc)
+                        addStatement("%T<%T>(%M<%T>())", serializationTypeName.value, returnApiTypeName, TYPE_OF_NAME, returnApiTypeName)
+                        endControlFlow()
+
+                        val cn = Named.produce(names, "v")
+                        names.add(Named(cn, Named.TYPE_TEMPORARY or Named.NAME_CONVERTER))
+                        val vn = if (names.any { it.value == CONVERTERS_NAME }) "this.${CONVERTERS_NAME}" else CONVERTERS_NAME
+                        addStatement( "val %N = $vn.getOrPut(%S,%N) as %T<%T>", cn, apiFunc,cndvfunc, serializationTypeName.value, returnApiTypeName)
+
+                        val pn = Named.produce(names, "v")
+                        names.add(Named(pn, Named.TYPE_TEMPORARY or Named.NAME_PERSISTENCE))
+                        // TODO: 未使用缓存
+                        val condition = persistenceTypeName.persistence.classKind == ClassKind.OBJECT
+                        addStatement("val %N = %T${if (condition) "" else "()"}", pn, persistenceTypeName.persistence.value)
+
+//                        val cn = Named.produce(names, "v")
+//                        names.add(Named(cn, Named.TYPE_TEMPORARY or Named.NAME_CONVERTER))
+//                        val vn = if (names.any { it.value == CONVERTERS_NAME }) "this.${CONVERTERS_NAME}" else CONVERTERS_NAME
+//                        addStatement("val %N = $vn.getOrPut(%S,%N)  as %T<%T>", cn, apiFunc, cndvfunc,serializationTypeName.value)
+//                        val pn = Named.produce(names, "v")
+//                        names.add(Named(pn, Named.TYPE_TEMPORARY or Named.NAME_PERSISTENCE))
+//                        // TODO: 未使用缓存
+//                        val condition = persistenceTypeName.persistence.classKind == ClassKind.OBJECT
+//                        addStatement("val %N = %T${if (condition) "" else "()"}", pn, persistenceTypeName.persistence.value)
+
                     }
                 }
             }
