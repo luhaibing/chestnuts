@@ -19,9 +19,19 @@ dependencies {
 afterEvaluate {
     publishing {
         publications {
-            release(MavenPublication) {
+            dev(MavenPublication) {
                 from components.java
+                artifactId = "core"
+                groupId = "com.github.luhaibing.chestnuts"
+                version = "1.3"
             }
+        }
+        // 添加仓库地址
+        repositories {
+            // 当上传到本地默认仓库
+            // mavenLocal()
+            // 当上传到本地指定路径仓库
+            maven { url = rootProject.file("repo") }
         }
     }
 }

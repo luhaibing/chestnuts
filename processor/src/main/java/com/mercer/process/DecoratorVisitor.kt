@@ -200,7 +200,7 @@ class DecoratorVisitor(
             memberNames.add(Named(API_NAME, Named.TYPE_VARIABLE))
 
             add(
-                PropertySpec.builder(Variable.CONVERTERS_NAME, Kotlin.CONVERTER_FACTORY_NAME)
+                PropertySpec.builder(CONVERTERS_NAME, Kotlin.CONVERTER_FACTORY_NAME)
                     .addModifiers(KModifier.PRIVATE)
                     .delegate(buildCodeBlock {
                         beginControlFlow("lazy")
@@ -209,7 +209,7 @@ class DecoratorVisitor(
                     })
                     .build()
             )
-            memberNames.add(Named(Variable.CONVERTERS_NAME, Named.TYPE_VARIABLE))
+            memberNames.add(Named(CONVERTERS_NAME, Named.TYPE_VARIABLE))
         }
     }
 
