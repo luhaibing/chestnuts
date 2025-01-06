@@ -12,7 +12,7 @@ import java.lang.annotation.Target;
  * @Created on 2025/01/03.
  * @Description: 序列化
  */
-@Target(ElementType.TYPE)
+@Target({ElementType.TYPE, ElementType.METHOD})
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Serialization {
 
