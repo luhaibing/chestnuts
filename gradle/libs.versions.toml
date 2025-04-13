@@ -13,6 +13,7 @@ compose-bom = "2024.04.01"
 kotlinx-coroutines = "1.9.0"
 retrofit = "2.11.0"
 okhttp = "4.12.0"
+navigation = "2.8.0"
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -24,6 +25,8 @@ kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", versi
 
 
 [libraries]
+androidx-annotation = { module = "androidx.annotation:annotation", version = "1.9.1" }
+
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "core-ktx" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version = "1.7.0" }
 android-material = { group = "com.google.android.material", name = "material", version = "1.12.0" }
@@ -32,7 +35,20 @@ androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "j
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espresso-core" }
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "compose-bom" }
 
+androidx-lifecycle-viewmodel-ktx = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-ktx", version.ref = "lifecycle" }
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle" }
+androidx-lifecycle-runtime-ktx-android = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx-android", version.ref = "lifecycle" }
+androidx-lifecycle-livedata-ktx = { group = "androidx.lifecycle", name = "lifecycle-livedata-ktx", version.ref = "lifecycle" }
+androidx-lifecycle-livedata-core-ktx = { group = "androidx.lifecycle", name = "lifecycle-livedata-core-ktx", version.ref = "lifecycle" }
+androidx-lifecycle-jvm = { group = "androidx.lifecycle", name = "lifecycle-common-jvm", version.ref = "lifecycle" }
+androidx-lifecycle-process = { group = "androidx.lifecycle", name = "lifecycle-process", version.ref = "lifecycle" }
+androidx-lifecycle-service = { group = "androidx.lifecycle", name = "lifecycle-service", version.ref = "lifecycle" }
+
+navigation-fragment-ktx = { module = "androidx.navigation:navigation-fragment-ktx", version.ref = "navigation" }
+navigation-common-ktx = { module = "androidx.navigation:navigation-common-ktx", version.ref = "navigation" }
+navigation-runtime-ktx = { module = "androidx.navigation:navigation-runtime-ktx", version.ref = "navigation" }
+navigation-ui-ktx = { module = "androidx.navigation:navigation-ui-ktx", version.ref = "navigation" }
+
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activity-compose" }
 androidx-ui = { group = "androidx.compose.ui", name = "ui" }
 androidx-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
@@ -84,4 +100,19 @@ retrofit = [
     "okhttp",
     "retrofit-converter-gson",
 ]
-
+lifecycle = [
+    "androidx-lifecycle-viewmodel-ktx",
+    "androidx-lifecycle-runtime-ktx",
+    "androidx-lifecycle-runtime-ktx-android",
+    "androidx-lifecycle-livedata-ktx",
+    "androidx-lifecycle-livedata-core-ktx",
+    "androidx-lifecycle-jvm",
+    "androidx-lifecycle-process",
+    "androidx-lifecycle-service",
+]
+navigation = [
+    "navigation-fragment-ktx",
+    "navigation-common-ktx",
+    "navigation-runtime-ktx",
+    "navigation-ui-ktx"
+]
