@@ -13,6 +13,7 @@ import com.mercer.magic.interfaces.OnDependencyReuseWork
 import com.mercer.magic.javaRes
 import com.mercer.magic.maven
 import com.mercer.magic.named
+import com.mercer.magic.onEach
 import com.mercer.magic.record
 import com.mercer.magic.requireExtensionNotNull
 import org.gradle.api.Project
@@ -38,14 +39,60 @@ open class DependencyReuseGradleAGP7Impl : OnDependencyReuseWork {
         println("gradle start ： ${taskNames.joinToString(",", prefix = "[", postfix = "]")}")
         rootProject.extensions.create("dependencyReuse", DependencyReusePluginExtension::class.java)
         val subprojects = rootProject.subprojects.toList()
-        rootProject.afterEvaluate {}
+        subprojects.onEach {
+            replaceModule()
+        }
         subprojects.afterEvaluate {
             val extension = rootProject.requireExtensionNotNull()
             val res = project2res(extension)
             if (res != null) {
                 publishModule(res, extension)
             }
-            replaceModule(extension)
+            // replaceModule(extension)
+        }
+    }
+
+    private fun Project.replaceModule() {
+        configurations.configureEach { configuration ->
+            val extension = rootProject.requireExtensionNotNull()
+            /*
+            configuration.resolutionStrategy.dependencySubstitution { substitutions: DependencySubstitutions ->
+                substitutions.all { substitution: DependencySubstitution ->
+                    ...
+                }
+            }
+            */
+            configuration.resolutionStrategy.dependencySubstitution.all { substitution: DependencySubstitution ->
+                val component = substitution.requested
+                if (component is ProjectComponentSelector) {
+                    val find = rootProject.project(component.projectPath)
+                    val named = find.named
+                    val res = find.project2res(extension)
+                    if (res?.exists == true) {
+                        val notation = arrayOf(extension.groupId, res.named.artifactName, res.lastModifiedTime).joinToString(":")
+                        println("$name 替换本地模块依赖 >>> ${named.path} 存在缓存 >>> $notation.")
+                        substitution.useTarget(notation)
+                    } else {
+                        System.err.println("$name 替换本地模块依赖 >>> ${named.path} 不存在本地依赖的缓存.")
+                    }
+                } else if (component is ModuleComponentSelector) {
+                    if (component.group == "com.mercer") {
+                        val projectPath = component.module.split("_").joinToString(":")
+                        val find = try {
+                            rootProject.project(projectPath)
+                        } catch (e: Exception) {
+                            null
+                        }
+                        if (find?.project2res(extension)?.exists != true && find != null) {
+                            substitution.useTarget(find)
+                        }
+                    }
+                } else if (component is LibraryComponentSelector) {
+                    // 该种类已弃用.
+                } else {
+                    // 未知类型的依赖
+                }
+            }
         }
     }
 
