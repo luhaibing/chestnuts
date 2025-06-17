@@ -13,15 +13,7 @@ import okhttp3.Response
 class MyInterceptor : Interceptor {
 
     override fun intercept(chain: Interceptor.Chain): Response {
-        print("*************")
-        print(" ")
-        println("MyInterceptor")
-        print(" ")
-        print("*************")
-        println()
         val request = chain.request()
-        println()
-        println()
         return chain.proceed(request)
     }
 

@@ -80,6 +80,7 @@ object Coroutines {
 
     val FLOW_FUNCTION = MemberName("kotlinx.coroutines.flow", "flow")
     val RUN_BLOCKING_FLOW_FUNCTION = MemberName("kotlinx.coroutines", "runBlocking")
+    val LAUNCH_FLOW_FUNCTION = MemberName("kotlinx.coroutines", "launch")
 }
 
 object Retrofit {

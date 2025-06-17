@@ -1,6 +1,8 @@
 package com.mercer.library.test
 
 import com.mercer.core.Creator
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -23,6 +25,10 @@ class SimpleCreator : Creator {
 
     override fun <T : Any> create(service: KClass<T>): T {
         return retrofit.create(service.java) as T
+    }
+
+    override val coroutineScope: CoroutineScope by lazy {
+        CoroutineScope(Dispatchers.Main)
     }
 
 }

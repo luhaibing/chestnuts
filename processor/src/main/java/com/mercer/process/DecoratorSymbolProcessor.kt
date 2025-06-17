@@ -41,7 +41,7 @@ class DecoratorSymbolProcessor(
                 val packageName = it.packageName.asString()
                 val implTypSpec = TypeSpec.classBuilder(it.implName)
                 val apiTypeSpec = TypeSpec.interfaceBuilder(it.apiName)
-                it.accept(DecoratorVisitor(env, resolver, apiTypeSpec, implTypSpec))
+                it.accept(DecoratorVisitor(env, resolver, apiTypeSpec, implTypSpec,it))
                 val implFileSpec = FileSpec.builder(packageName, it.implName)
                     .addType(implTypSpec.build())
                     .build()

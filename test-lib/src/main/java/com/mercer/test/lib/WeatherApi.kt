@@ -1,22 +1,18 @@
 package com.mercer.test.lib
 
-import com.google.gson.Gson
 import com.mercer.annotate.http.CacheKey
 import com.mercer.annotate.http.Decorator
-import com.mercer.annotate.http.JsonKey
 import com.mercer.annotate.http.Persistence
 import com.mercer.annotate.http.Serialization
 import com.mercer.core.SelectPersistenceDispatcher
 import com.mercer.test.lib.weather.Now
 import com.mercer.test.lib.weather.Response
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.runBlocking
 import retrofit2.http.GET
-import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -39,6 +35,7 @@ interface WeatherApi {
         @Temp @CacheKey("id") @Query("key") key: String,
     ): Flow<Response<Now>>
 
+    @Persistence(value = MyPersistence::class)
     @Temp
     @GET("v7/weather/now")
     suspend fun now2(
@@ -47,12 +44,13 @@ interface WeatherApi {
         @Temp temp: String,
     ): Response<Now>
 
+    @Persistence(value = MyPersistence::class)
     @GET("v7/weather/now")
-    suspend fun now3(
-        @JsonKey("location") location: String,
-        @JsonKey("key") key: String,
+    fun now3(
+        @Query("location") location: String,
+        @Query("key") key: String,
         @Temp temp: String,
-    ): Response<Now>
+    ): Deferred<Response<Now>>
 
     @Persistence(value = MyPersistence2::class, dispatcher = SelectPersistenceDispatcher::class)
     @GET("v7/weather/now")
@@ -72,15 +70,16 @@ interface WeatherApi {
 fun main() = runBlocking {
     val weatherApi = WeatherApi()
     weatherApi.now4("101040100", "0e79ac89a9414dd28106035b628dc52b")
-        .onStart {
-            println("onStart")
-        }
-        .onCompletion {
-            println("onCompletion : $it")
-        }
         .onEach {
-            println(Gson().toJson(it))
+            // println(Gson().toJson(it))
+            println("v1 >>> $it")
         }
         .launchIn(this)
+    val result1 = weatherApi.now2("101040100", "0e79ac89a9414dd28106035b628dc52b", "xxx")
+    println("v2 >>> $result1")
+    val result2 = weatherApi.now3("101040100", "0e79ac89a9414dd28106035b628dc52b","232").await()
+    println("v3 >>> $result2")
     Unit
 }
+
+// https://devapi.qweather.com/v7/weather/now?location=101040100&key=0e79ac89a9414dd28106035b628dc52b

@@ -3,7 +3,9 @@ package com.mercer.test.lib
 import com.google.gson.Gson
 import com.mercer.core.Creator
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
@@ -58,5 +60,9 @@ class SimpleCreator : Creator {
         CoroutineScope(Dispatchers.IO)
     }
     */
+
+    override val coroutineScope: CoroutineScope by lazy {
+        CoroutineScope(Dispatchers.IO)
+    }
 
 }

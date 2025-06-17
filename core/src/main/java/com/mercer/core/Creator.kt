@@ -1,5 +1,6 @@
 package com.mercer.core
 
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.flow.Flow
 import kotlin.reflect.KClass
@@ -24,6 +25,6 @@ interface Creator {
 
     // fun any2str(value: Any?): String?
 
-    // val scope: CoroutineScope
+    val coroutineScope: CoroutineScope
 
 }

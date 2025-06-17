@@ -25,7 +25,7 @@ class MyPersistence : OnPersistence {
     }
 
     override suspend fun <T : Any?> sink(value: T?, path: Path, cacheKeys: CacheKeys, serializer: Serializer<T>) {
-
+        println("写入到缓存")
     }
 
 }
@@ -36,12 +36,12 @@ object MyPersistence2 : OnPersistence {
         val json =
             "{\"code\":\"200\",\"fxLink\":\"https://www.qweather.com/en/weather/chongqing-101040100.html\",\"now\":{\"cloud\":\"88888\",\"dew\":\"8\",\"feelsLike\":\"8\",\"humidity\":\"84\",\"icon\":\"104\",\"obsTime\":\"2024-11-26T15:00+08:00\",\"pressure\":\"994\",\"temp\":\"10\",\"text\":\"阴\",\"vis\":\"12\",\"wind360\":\"0\",\"windDir\":\"北风\",\"windScale\":\"3\",\"windSpeed\":\"12\"},\"refer\":{\"license\":[\"CC BY-SA 4.0\"],\"sources\":[\"QWeather\"]},\"updateTime\":\"2024-11-26T15:03+08:00\"}"
         val value = deserializer(json)
-        println("读取到缓存")
+        println("读取到缓存2")
         return value
     }
 
     override suspend fun <T : Any?> sink(value: T?, path: Path, cacheKeys: CacheKeys, serializer: Serializer<T>) {
-
+        println("写入到缓存2")
     }
 
 }

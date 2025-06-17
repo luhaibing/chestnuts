@@ -8,6 +8,7 @@ import com.mercer.core.Path
 import com.mercer.core.SelectPersistenceDispatcher
 import com.mercer.test.lib.weather.Now
 import com.mercer.test.lib.weather.Response
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.flow.Flow
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.reflect.typeOf
@@ -53,7 +54,7 @@ class WeatherApiImpl2 private constructor() : WeatherApi {
         TODO("Not yet implemented")
     }
 
-    override suspend fun now3(location: String, key: String, temp: String): Response<Now> {
+    override fun now3(location: String, key: String, temp: String): Deferred<Response<Now>> {
         TODO("Not yet implemented")
     }
 

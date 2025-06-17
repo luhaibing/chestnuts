@@ -21,7 +21,7 @@ import com.mercer.process.Coroutines.COROUTINES
 import com.mercer.process.Coroutines.DEFERRED_CLASS_NAME
 import com.mercer.process.Coroutines.FLOW_CLASS_NAME
 import com.mercer.process.Coroutines.FLOW_FUNCTION
-import com.mercer.process.Coroutines.RUN_BLOCKING_FLOW_FUNCTION
+import com.mercer.process.Coroutines.LAUNCH_FLOW_FUNCTION
 import com.mercer.process.Kotlin.ANY_NULLABLE
 import com.mercer.process.Kotlin.TYPE_OF_NAME
 import com.mercer.process.Variable.API_NAME
@@ -60,6 +60,7 @@ class DecoratorVisitor(
     private val resolver: Resolver,
     private val apiTypeSpec: TypeSpec.Builder,
     private val implTypeSpec: TypeSpec.Builder,
+    private val classDeclaration: KSClassDeclaration,
 ) : KSVisitorVoid() {
 
     private val logger: KSPLogger = env.logger
@@ -376,7 +377,7 @@ class DecoratorVisitor(
                     )
                 }
                 if (persistenceCondition && serializationTypeName != null && persistenceTypeName != null) {
-                    if (returnRawTypeName in COROUTINES) {
+                    // if (returnRawTypeName in COROUTINES) {
                         val dcfn = Named.produce(names, "v")
                         names.add(Named(dcfn, Named.TYPE_TEMPORARY or Named.NAME_CONVERTER_DEFAULT_VALUE_FUNC))
                         beginControlFlow("val %N = ",dcfn)
@@ -393,7 +394,7 @@ class DecoratorVisitor(
                         // TODO: 未使用缓存
                         val condition = persistenceTypeName.persistence.classKind == ClassKind.OBJECT
                         addStatement("val %N = %T${if (condition) "" else "()"}", pn, persistenceTypeName.persistence.value)
-                    }
+                    // }
                 }
             }
             .addCode(buildCodeBlock {
@@ -413,7 +414,7 @@ class DecoratorVisitor(
                 // 获取response
                 val responseCodeBlock = buildCodeBlock {
                     names.add(Named(resultName, Named.TYPE_TEMPORARY))
-                    val vn = if (names.any { it.value == API_NAME }) "this.${API_NAME}" else API_NAME
+                    val vn = if (names.any { it.value == API_NAME }) "this@${classDeclaration.implName}.${API_NAME}" else API_NAME
                     addStatement("val %N : %T = ${vn}.%N(%L)", resultName, returnApiTypeName, apiFunc, args)
                 }
                 when (returnRawTypeName) {
@@ -455,15 +456,38 @@ class DecoratorVisitor(
                         val deferredName = Named.produce(names, "v")
                         names.add(Named(deferredName, Named.TYPE_TEMPORARY))
                         addStatement("val %N = %T<%T>()", deferredName, COMPLETABLE_DEFERRED_CLASS_NAME, returnApiTypeName)
-                        beginControlFlow("%M", RUN_BLOCKING_FLOW_FUNCTION)
+                        beginControlFlow("onCreator.coroutineScope.%M", LAUNCH_FLOW_FUNCTION)
                         add(responseCodeBlock)
                         addStatement("%N.complete(%N)", deferredName, resultName)
+
+                        if (persistenceTypeName != null) {
+                            val pathName = names.find { it.flag intersect Named.NAME_PATH }?.value
+                            val cacheKeysName = names.find { it.flag intersect Named.NAME_CACHE_KEYS }?.value
+                            val converterName = names.find { it.flag intersect Named.NAME_CONVERTER }?.value
+                            val persistenceName = names.find { it.flag intersect Named.NAME_PERSISTENCE }?.value
+                            if (persistenceName != null && pathName != null && cacheKeysName != null && converterName != null) {
+                                addStatement("%N.sink(%N,%N,%N,%N.serializer)", persistenceName, resultName, pathName, cacheKeysName, converterName)
+                            }
+                        }
                         endControlFlow()
                         addStatement("return %N", deferredName)
                     }
 
                     else -> {
                         add(responseCodeBlock)
+
+                        if (persistenceTypeName != null) {
+                            val pathName = names.find { it.flag intersect Named.NAME_PATH }?.value
+                            val cacheKeysName = names.find { it.flag intersect Named.NAME_CACHE_KEYS }?.value
+                            val converterName = names.find { it.flag intersect Named.NAME_CONVERTER }?.value
+                            val persistenceName = names.find { it.flag intersect Named.NAME_PERSISTENCE }?.value
+                            if (persistenceName != null && pathName != null && cacheKeysName != null && converterName != null) {
+                                beginControlFlow("onCreator.coroutineScope.%M", LAUNCH_FLOW_FUNCTION)
+                                addStatement("%N.sink(%N,%N,%N,%N.serializer)", persistenceName, resultName, pathName, cacheKeysName, converterName)
+                                endControlFlow()
+                            }
+                        }
+
                         addStatement("return %N", resultName)
                     }
                 }
